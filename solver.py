@@ -13,6 +13,7 @@ from utils.tools import *
 from model import *
 import logging
 # import wandb
+from loss import CosineAlignLoss
 
 class Solver(object):
     def __init__(self, hyp_params, train_loader, dev_loader, test_loader, is_train=True, model=None, pretrained_emb=None):
@@ -101,7 +102,6 @@ class Solver(object):
             left_batch = self.update_batch
             expert_distribution = []
             for i_batch, batch_data in enumerate(self.train_loader):
-                raw_text = batch_data['raw_text']
                 vision = batch_data['vision']
                 audio = batch_data['audio']
                 text = batch_data['text']
@@ -143,7 +143,6 @@ class Solver(object):
             # expert_distribution = []
             with torch.no_grad():
                 for batch_data in loader:
-                    raw_text = batch_data['raw_text']
                     vision = batch_data['vision']
                     audio = batch_data['audio']
                     text = batch_data['text']

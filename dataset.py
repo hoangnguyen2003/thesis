@@ -9,7 +9,9 @@ import pickle
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
-
+import pandas as pd
+from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data.sampler import SubsetRandomSampler
 
 __all__ = ['MMDataLoader']
 
@@ -46,9 +48,20 @@ class MMDataset(Dataset):
 
         self.rawText = data[self.mode]['raw_text']
         self.ids = data[self.mode]['id']
-        self.labels = {
-            'M': data[self.mode]['regression'+'_labels'].astype(np.float32)
-        }
+        # self.labels = {
+        #     'M': data[self.mode]['regression'+'_labels'].astype(np.float32)
+        # }
+        self.labels = {}
+        if 'regression'+'_labels' in data[self.mode]:
+            self.labels['M'] = data[self.mode]['regression'+'_labels'].astype(np.float32)
+        else:
+            self.labels['M'] = None
+
+        if 'classification_labels' in data[self.mode]:
+            self.labels['ER'] = data[self.mode]['classification_labels'].astype(np.float32)
+        else:
+            self.labels['ER'] = None
+
         if self.args.dataset == 'sims':
             for m in "TAV":
                 self.labels[m] = data[self.mode]['regression'+'_labels_'+m]
@@ -82,14 +95,19 @@ class MMDataset(Dataset):
         return self.text.shape[2], self.audio.shape[2], self.vision.shape[2]
 
     def __getitem__(self, index):
+        labels_dict = {}
+        for k, v in self.labels.items():
+            if v is None:
+                labels_dict[k] = None
+            else:
+                labels_dict[k] = torch.Tensor(v[index].reshape(-1))
+
         sample = {
-            'raw_text': self.rawText[index].lower(),
             'text': torch.Tensor(self.text[index]), 
             'audio': torch.Tensor(self.audio[index]),
             'vision': torch.Tensor(self.vision[index]),
-            'index': index,
             'id': self.ids[index],
-            'labels': {k: torch.Tensor(v[index].reshape(-1)) for k, v in self.labels.items()}
+            'labels': labels_dict
         } 
         return sample
 
@@ -114,3 +132,134 @@ def MMDataLoader(args):
     }
     
     return dataLoader
+
+
+class IEMOCAPDataset(Dataset):
+    def __init__(self, train=True):
+        self.videoIDs, self.videoSpeakers, self.videoLabels, self.videoText, self.roberta2, self.roberta3, self.roberta4, self.videoAudio, self.videoVisual, self.videoSentence, self.trainVid, self.testVid = pickle.load(
+            open('datasets/IEMOCAP/iemocap_multi_features.pkl', 'rb'), encoding='latin1')
+        self.keys = [x for x in (self.trainVid if train else self.testVid)]
+
+        self.len = len(self.keys)
+
+    def __getitem__(self, index):
+        vid = self.keys[index]
+        # return torch.FloatTensor(self.videoText[vid]), torch.FloatTensor(
+        #     self.videoVisual[vid]), torch.FloatTensor(self.videoAudio[vid]), torch.FloatTensor(
+        #         [[1,0] if x=='M' else [0,1] for x in self.videoSpeakers[vid]]), torch.FloatTensor(
+        #             [1]*len(self.videoLabels[vid])), torch.LongTensor(self.videoLabels[vid]), vid
+        sentiment = None
+        emotion = torch.LongTensor(self.videoLabels[vid])
+        return {
+            'text': torch.FloatTensor(self.videoText[vid]),
+            'audio': torch.FloatTensor(self.videoAudio[vid]),
+            'vision': torch.FloatTensor(self.videoVisual[vid]),
+            'id': vid,
+            'labels': {
+                'M': sentiment,
+                'ER': emotion
+            }
+        }
+
+    def __len__(self):
+        return self.len
+
+    def collate_fn(self, data):
+        dat = pd.DataFrame(data)
+        return [pad_sequence(dat[i]) if i<4 else pad_sequence(dat[i], True)
+                if i<6 else dat[i].tolist() for i in dat]
+
+class MELDDataset(Dataset):
+    def __init__(self, path, train=True):
+        self.videoIDs, self.videoSpeakers, self.videoLabels, _, self.videoText, self.roberta2, self.roberta3, self.roberta4, self.videoAudio, self.videoVisual, self.videoSentence, self.trainVid, self.testVid, _ = pickle.load(open(path, 'rb'))
+
+        self.keys = [x for x in (self.trainVid if train else self.testVid)]
+
+        self.len = len(self.keys)
+
+    def __getitem__(self, index):
+        vid = self.keys[index]
+        # return torch.FloatTensor(self.videoText[vid]), torch.FloatTensor(
+        #     self.videoVisual[vid]), torch.FloatTensor(self.videoAudio[vid]), torch.FloatTensor(
+        #         self.videoSpeakers[vid]), torch.FloatTensor(
+        #             [1]*len(self.videoLabels[vid])), torch.LongTensor(self.videoLabels[vid]), vid
+        sentiment = None
+        emotion = torch.LongTensor(self.videoLabels[vid])
+        return {
+            'text': torch.FloatTensor(self.videoText[vid]),
+            'audio': torch.FloatTensor(self.videoAudio[vid]),
+            'vision': torch.FloatTensor(self.videoVisual[vid]),
+            'id': vid,
+            'labels': {
+                'M': sentiment,
+                'ER': emotion
+            }
+        }
+
+    def __len__(self):
+        return self.len
+
+    def return_labels(self):
+        return_label = []
+        for key in self.keys:
+            return_label+=self.videoLabels[key]
+        return return_label
+
+    def collate_fn(self, data):
+        dat = pd.DataFrame(data)
+        return [pad_sequence(dat[i]) if i<4 else pad_sequence(dat[i], True)
+                if i<6 else dat[i].tolist() for i in dat]
+
+def get_train_valid_sampler(trainset, valid=0.1, dataset='MELD'):
+    size = len(trainset)
+    idx = list(range(size))
+    split = int(valid*size)
+    return SubsetRandomSampler(idx[split:]), SubsetRandomSampler(idx[:split])
+
+def get_IEMOCAP_loaders(batch_size=32, valid=0.1, num_workers=0, pin_memory=False):
+    trainset = IEMOCAPDataset()
+    train_sampler, valid_sampler = get_train_valid_sampler(trainset, valid)
+    train_loader = DataLoader(trainset,
+                              batch_size=batch_size,
+                              sampler=train_sampler,
+                              collate_fn=trainset.collate_fn,
+                              num_workers=num_workers,
+                              pin_memory=pin_memory)
+    valid_loader = DataLoader(trainset,
+                              batch_size=batch_size,
+                              sampler=valid_sampler,
+                              collate_fn=trainset.collate_fn,
+                              num_workers=num_workers,
+                              pin_memory=pin_memory)
+
+    testset = IEMOCAPDataset(train=False)
+    test_loader = DataLoader(testset,
+                             batch_size=batch_size,
+                             collate_fn=testset.collate_fn,
+                             num_workers=num_workers,
+                             pin_memory=pin_memory)
+    return train_loader, valid_loader, test_loader
+
+def get_MELD_loaders(batch_size=32, valid=0.1, num_workers=0, pin_memory=False):
+    trainset = MELDDataset('datasets/MELD/meld_multi_features.pkl')
+    train_sampler, valid_sampler = get_train_valid_sampler(trainset, valid, 'MELD')
+    train_loader = DataLoader(trainset,
+                              batch_size=batch_size,
+                              sampler=train_sampler,
+                              collate_fn=trainset.collate_fn,
+                              num_workers=num_workers,
+                              pin_memory=pin_memory)
+    valid_loader = DataLoader(trainset,
+                              batch_size=batch_size,
+                              sampler=valid_sampler,
+                              collate_fn=trainset.collate_fn,
+                              num_workers=num_workers,
+                              pin_memory=pin_memory)
+
+    testset = MELDDataset('datasets/MELD/meld_multimodal_features.pkl', train=False)
+    test_loader = DataLoader(testset,
+                             batch_size=batch_size,
+                             collate_fn=testset.collate_fn,
+                             num_workers=num_workers,
+                             pin_memory=pin_memory)
+    return train_loader, valid_loader, test_loader

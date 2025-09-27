@@ -14,3 +14,14 @@ class Load_Balancing_loss(nn.Module):
         
     def forward(self, f, P,):
         return torch.dot(f, P)
+
+class CosineAlignLoss(nn.Module):
+    def __init__(self):
+        super(CosineAlignLoss, self).__init__()
+        self.cos = nn.CosineSimilarity(dim=-1, eps=1e-8)
+
+    def forward(self, h_sa, h_er):
+        h_sa = F.normalize(h_sa, p=2, dim=-1)
+        h_er = F.normalize(h_er, p=2, dim=-1)
+        sim = self.cos(h_sa, h_er)
+        return torch.mean(1.0 - sim)
