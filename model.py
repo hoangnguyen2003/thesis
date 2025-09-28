@@ -23,6 +23,12 @@ class MMA_Bert(nn.Module):
             setattr(config,'vision_dim',hp.vision_dim)
         if not hasattr(config,'start_fusion_layer'):
             setattr(config,'start_fusion_layer',hp.start_fusion_layer)
+        if not hasattr(config, 'n_shared'):
+            setattr(config, 'n_shared', hp.n_shared)
+        if not hasattr(config, 'n_ts_sa'):
+            setattr(config, 'n_ts_sa', hp.n_ts_sa)
+        if not hasattr(config, 'n_ts_er'):
+            setattr(config, 'n_ts_er', hp.n_ts_er)
         self.rank = hp.rank
         peft_config = LoraConfig(inference_mode=False, r=hp.lora_rank, lora_alpha=32, lora_dropout=0.1)
         model = XBertModel.from_pretrained(hp.bert_path, config=config)
@@ -55,16 +61,32 @@ class MMA(nn.Module):
     def __init__(self,hp):
         super(MMA, self).__init__()
         self.model = MMA_Bert(hp)
-        self.cls_head = SubNet(in_size=768, hidden_size=128, n_class=1, dropout=0.2)
+        # self.cls_head = SubNet(in_size=768, hidden_size=128, n_class=1, dropout=0.2)
         self.config = BertConfig.from_pretrained(hp.bert_path)
+        hidden_size = self.config.hidden_size
+
+        self.cls_head_SA = SubNet(in_size=hidden_size,
+                                  hidden_size=128,
+                                  n_class=1,
+                                  dropout=0.2)
+        self.num_emotions = 6
+        self.cls_head_ER = SubNet(in_size=hidden_size,
+                                  hidden_size=128,
+                                  n_class=self.num_emotions,
+                                  dropout=0.2)
         
     def forward(self, vision, audio, text):   
         batch_size = text.shape[0]
         input_ids, input_mask = text[:,:,0].long(), text[:,:,1].float()
         hidden_states, LBLoss, ep_d = self.model(text, vision, audio)
-        embedding = hidden_states[:,0,:]
-        pred = self.cls_head(embedding)
-        return pred, LBLoss
+        # embedding = hidden_states[:,0,:]
+        # pred = self.cls_head(embedding)
+        emb_sa = hidden_states[:,0,:]
+        emb_er = hidden_states[:,0,:]
+        pred_SA = self.cls_head_SA(emb_sa)
+        pred_ER = self.cls_head_ER(emb_er)
+        return pred_SA, pred_ER, LBLoss, emb_sa, emb_er
+        # return pred, LBLoss
     
     def get_nb_trainable_parameters(self):
         r"""
