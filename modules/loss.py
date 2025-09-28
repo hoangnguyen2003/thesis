@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import torch.utils.checkpoint
 from torch import nn
+import torch.nn.functional as F
 
 class Load_Balancing_loss(nn.Module):
     def __init__(self):
@@ -17,7 +18,7 @@ class Load_Balancing_loss(nn.Module):
 
 class CosineAlignLoss(nn.Module):
     def __init__(self):
-        super(CosineAlignLoss, self).__init__()
+        super().__init__()
         self.cos = nn.CosineSimilarity(dim=-1, eps=1e-8)
 
     def forward(self, h_sa, h_er):
