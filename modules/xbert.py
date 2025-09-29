@@ -418,13 +418,13 @@ class XBertLayer(nn.Module):
             # self.adapter_2 = Adapter_Layer(bottleneck=self.rank)
 
             self.shared_experts = nn.ModuleList(
-                [Adapter_Layer(bottleneck=self.rank, d_model=3*768) for _ in range(self.n_shared)])
-            self.ts_sa = Adapter_Layer(bottleneck=self.rank, d_model=3*768)
-            self.ts_er = Adapter_Layer(bottleneck=self.rank, d_model=3*768)
+                [Adapter_Layer(bottleneck=self.rank, d_model=768) for _ in range(self.n_shared)])
+            self.ts_sa = Adapter_Layer(bottleneck=self.rank, d_model=768)
+            self.ts_er = Adapter_Layer(bottleneck=self.rank, d_model=768)
         
             # self.adapter_atten_gate = RouterPFSelfAttention()
-            self.router_sa = nn.Linear(3*768, self.n_shared)
-            self.router_er = nn.Linear(3*768, self.n_shared)
+            self.router_sa = nn.Linear(768, self.n_shared)
+            self.router_er = nn.Linear(768, self.n_shared)
 
             self.modality_fusion = PFSelfAttention()
 
@@ -479,9 +479,9 @@ class XBertLayer(nn.Module):
             attention_output = attention_output.view(-1,hidden_dim)
             audio_t = audio_t.contiguous().view(-1,hidden_dim)
             vision_t = vision_t.contiguous().view(-1,hidden_dim)
-            h = self.modality_fusion(
+            h = self.proj(self.modality_fusion(
                 torch.stack((attention_output, audio_t + attention_output, vision_t+attention_output), dim=1)).reshape(
-                    batch_size, sequence_length, 3*hidden_dim)
+                    batch_size, sequence_length, 3*hidden_dim))
             
             total_lb = torch.tensor(0.0, device=attention_output.device, dtype=attention_output.dtype)
             h_sa = h
@@ -562,7 +562,7 @@ class XBertLayer(nn.Module):
 
             attention_output = attention_output.reshape(batch_size, sequence_length, hidden_dim)
             # results = results.reshape(batch_size, sequence_length, hidden_dim)
-            results = self.proj(h)
+            results = h
             results = (32/self.rank) * results
             
             # lbloss = Load_Balancing_loss()
