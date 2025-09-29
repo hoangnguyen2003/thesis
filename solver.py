@@ -91,10 +91,7 @@ class Solver(object):
         optimizer_main = self.optimizer_main
         scheduler_main = self.scheduler_main
 
-        # criterion for downstream task
-        criterion = self.criterion
-
-        def train(model, optimizer, criterion):
+        def train(model, optimizer):
             epoch_loss = 0
 
             model.train()
@@ -155,7 +152,7 @@ class Solver(object):
                     
             return epoch_loss
 
-        def evaluate(model, criterion, test=False):
+        def evaluate(model, test=False):
             model.eval()
             loader = self.test_loader if test else self.dev_loader
             main_loss = 0.0        
@@ -211,9 +208,9 @@ class Solver(object):
 
             self.epoch = epoch
 
-            train_main_loss = train(model, optimizer_main, criterion)
-            val_loss, loss_er, _, _, _, _ = evaluate(model, criterion, test=False) 
-            _, _, results, truths, test_results_er, test_truths_er = evaluate(model, criterion, test=True)     
+            train_main_loss = train(model, optimizer_main)
+            val_loss, loss_er, _, _, _, _ = evaluate(model, test=False) 
+            _, _, results, truths, test_results_er, test_truths_er = evaluate(model, test=True)     
             
             end = time.time()
             duration = end-start
