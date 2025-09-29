@@ -430,6 +430,8 @@ class XBertLayer(nn.Module):
 
             self.lb_loss_module = Load_Balancing_loss()
 
+            self.proj = nn.Linear(3*768, 768)
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -560,7 +562,7 @@ class XBertLayer(nn.Module):
 
             attention_output = attention_output.reshape(batch_size, sequence_length, hidden_dim)
             # results = results.reshape(batch_size, sequence_length, hidden_dim)
-            results = h
+            results = self.proj(h)
             results = (32/self.rank) * results
             
             # lbloss = Load_Balancing_loss()
