@@ -194,8 +194,8 @@ class Solver(object):
             if len(results_er) > 0:
                 results_er = torch.cat(results_er)
                 truths_er = torch.cat(truths_er)
-                test_preds_er = results_er.view(-1).cpu().detach().numpy().astype(int)
-                test_truth_er = truths_er.view(-1).cpu().detach().numpy().astype(int)
+                test_preds_er = results_er
+                test_truth_er = truths_er.view(-1).long().to(test_preds_er.device)
                 avg_main_loss_er = self.crit_er(test_preds_er, test_truth_er)
 
             return avg_main_loss_sa, avg_main_loss_er, results_sa, truths_sa, results_er, truths_er
