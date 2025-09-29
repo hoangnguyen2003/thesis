@@ -406,8 +406,6 @@ class XBertLayer(nn.Module):
             self.vision_dim = config.vision_dim
             self.rank = config.rank
             self.n_shared = config.n_shared
-            self.n_ts_sa = config.n_ts_sa
-            self.n_ts_er = config.n_ts_er
         # self.alpha = config.alpha
             self.TopK = config.TopK
             # self.adapter_vision_1 = Adapter_Layer(bottleneck=self.rank)
