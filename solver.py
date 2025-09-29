@@ -184,7 +184,7 @@ class Solver(object):
                         truths_er.append(y_er)
             
             avg_main_loss_sa = None
-            avg_main_acc_er = None
+            avg_main_loss_er = None
             if len(results_sa) > 0:
                 results_sa = torch.cat(results_sa)
                 truths_sa = torch.cat(truths_sa)
@@ -196,7 +196,7 @@ class Solver(object):
                 truths_er = torch.cat(truths_er)
                 test_preds_er = results_er.view(-1).cpu().detach().numpy().astype(int)
                 test_truth_er = truths_er.view(-1).cpu().detach().numpy().astype(int)
-                avg_main_loss_er = self.scrit_er(test_preds_er, test_truth_er)
+                avg_main_loss_er = self.crit_er(test_preds_er, test_truth_er)
 
             return avg_main_loss_sa, avg_main_loss_er, results_sa, truths_sa, results_er, truths_er
 
