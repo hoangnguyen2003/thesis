@@ -14,6 +14,7 @@ from model import *
 import logging
 # import wandb
 from modules.loss import CosineAlignLoss
+from tqdm import tqdm
 
 class Solver(object):
     def __init__(self, hyp_params, train_loader, dev_loader, test_loader, is_train=True, model=None, pretrained_emb=None):
@@ -100,7 +101,7 @@ class Solver(object):
 
             left_batch = self.update_batch
             expert_distribution = []
-            for i_batch, batch_data in enumerate(self.train_loader):
+            for batch_data in tqdm(self.train_loader, desc="Train", leave=False):
                 vision = batch_data['vision']
                 audio = batch_data['audio']
                 text = batch_data['text']
@@ -163,7 +164,7 @@ class Solver(object):
             # expert_output = torch.zeros((12,1,769))
             # expert_distribution = []
             with torch.no_grad():
-                for batch_data in loader:
+                for batch_data in tqdm(loader, desc='eval', leave=False):
                     vision = batch_data['vision']
                     audio = batch_data['audio']
                     text = batch_data['text']
@@ -189,7 +190,7 @@ class Solver(object):
                 truths_sa = torch.cat(truths_sa)
                 test_preds_sa = results_sa.view(-1).cpu().detach().numpy()
                 test_truth_sa = truths_sa.view(-1).cpu().detach().numpy()
-                avg_main_loss_sa = self.crit_sa(test_preds_sa, test_truth_sa)
+                avg_main_loss_sa = np.mean(np.absolute(test_preds_sa - test_truth_sa))
             if len(results_er) > 0:
                 results_er = torch.cat(results_er)
                 truths_er = torch.cat(truths_er)
