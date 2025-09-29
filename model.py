@@ -46,12 +46,12 @@ class MMA_Bert(nn.Module):
         segment_ids: token_type_ids
         """
         input_ids, input_mask, segment_ids = text[:,0,:].long(), text[:,1,:].float(), text[:,2,:].long()
-        last_hidden_states, LBLoss = self.bert_model(input_ids=input_ids,
+        last_hidden_states, LBLoss, last_C_sa, last_C_er = self.bert_model(input_ids=input_ids,
                                             attention_mask=input_mask,
                                             token_type_ids=segment_ids,
                                             vision=vision,
                                             audio=audio)
-        return last_hidden_states, LBLoss
+        return last_hidden_states, LBLoss, last_C_sa, last_C_er
 
 class MMA(nn.Module):
     def __init__(self,hp):
