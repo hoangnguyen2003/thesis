@@ -123,6 +123,8 @@ class Solver(object):
                 else:
                     loss_sa = 0.0
                 if y_er is not None:
+                    print(pred_er)
+                    print(y_er)
                     loss_er = self.crit_er(pred_er, y_er)
                 else:
                     loss_er = 0.0
