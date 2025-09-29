@@ -211,7 +211,7 @@ class Solver(object):
 
             train_main_loss = train(model, optimizer_main)
             val_loss, loss_er, _, _, _, _ = evaluate(model, test=False) 
-            _, _, results, truths, test_results_er, test_truths_er = evaluate(model, test=True)     
+            test_loss, test_loss_er, results, truths, test_results_er, test_truths_er = evaluate(model, test=True)     
             
             end = time.time()
             duration = end-start
@@ -219,16 +219,13 @@ class Solver(object):
             
             scheduler_main.step()
             learning_rate = optimizer_main.state_dict()['param_groups'][0]['lr']
-            
-            # logging.info(f'learnng rate: {learning_rate}')
-            logging.info("-"*50)
-            logging.info('Epoch {:2d} | Time {:5.4f} sec | Valid Loss {:5.4f} | Test Loss {:5.4f}'.format(epoch, duration, val_loss, test_loss))
-            logging.info("-"*50)
 
             # print(f'training on epoch {epoch}')
             # print(f'learnng rate: {learning_rate}')
             print("-"*50)
-            print('Epoch {:2d} | Time {:5.4f} sec | Valid Loss {:5.4f} | Test Loss {:5.4f}'.format(epoch, duration, val_loss, test_loss))
+            print(
+                'Epoch {:2d} | Time {:5.4f} sec | Valid Loss MSA {:5.4f} | Test Loss MSA {:5.4f} | Valid Loss MER {:5.4f} | Test Loss MER {:5.4f}'.format(
+                    epoch, duration, val_loss, test_loss, loss_er, test_loss_er))
             print("-"*50)
             
 
