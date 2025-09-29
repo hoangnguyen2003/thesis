@@ -375,7 +375,7 @@ class BertOutput(nn.Module):
 from modules.loss import Load_Balancing_loss
 from modules.adapters import NoParamMultiHeadAttention
 from modules.loss import Load_Balancing_loss
-from modules.encoders import RouterSelfAttention, RouterPFSelfAttention, RouterPFMultiHeadAttention
+from modules.encoders import RouterSelfAttention, RouterPFSelfAttention, RouterPFMultiHeadAttention, PFSelfAttention
 class XBertLayer(nn.Module):
     def __init__(self, config, add_adapter=True):
         super().__init__()
@@ -405,18 +405,32 @@ class XBertLayer(nn.Module):
             self.audio_dim = config.audio_dim
             self.vision_dim = config.vision_dim
             self.rank = config.rank
+            self.n_shared = config.n_shared
+            self.n_ts_sa = config.n_ts_sa
+            self.n_ts_er = config.n_ts_er
         # self.alpha = config.alpha
             self.TopK = config.TopK
-            self.adapter_vision_1 = Adapter_Layer(bottleneck=self.rank)
-            self.adapter_vision_2 = Adapter_Layer(bottleneck=self.rank)
+            # self.adapter_vision_1 = Adapter_Layer(bottleneck=self.rank)
+            # self.adapter_vision_2 = Adapter_Layer(bottleneck=self.rank)
         
-            self.adapter_audio_1 = Adapter_Layer(bottleneck=self.rank)
-            self.adapter_audio_2 = Adapter_Layer(bottleneck=self.rank) 
+            # self.adapter_audio_1 = Adapter_Layer(bottleneck=self.rank)
+            # self.adapter_audio_2 = Adapter_Layer(bottleneck=self.rank) 
 
-            self.adapter_1 = Adapter_Layer(bottleneck=self.rank)
-            self.adapter_2 = Adapter_Layer(bottleneck=self.rank)
+            # self.adapter_1 = Adapter_Layer(bottleneck=self.rank)
+            # self.adapter_2 = Adapter_Layer(bottleneck=self.rank)
+
+            self.shared_experts = nn.ModuleList(
+                [Adapter_Layer(bottleneck=self.rank, d_model=3*768) for _ in range(self.n_shared)])
+            self.ts_sa = Adapter_Layer(bottleneck=self.rank, d_model=3*768)
+            self.ts_er = Adapter_Layer(bottleneck=self.rank, d_model=3*768)
         
-            self.adapter_atten_gate = RouterPFSelfAttention()
+            # self.adapter_atten_gate = RouterPFSelfAttention()
+            self.router_sa = nn.Linear(3*768, self.n_shared)
+            self.router_er = nn.Linear(3*768, self.n_shared)
+
+            self.modality_fusion = PFSelfAttention()
+
+            self.lb_loss_module = Load_Balancing_loss()
 
     def forward(
         self,
@@ -443,7 +457,7 @@ class XBertLayer(nn.Module):
         )
         attention_output = self_attention_outputs[0]
         #-----------------------------adapter_change----------token fusion--------------------#
-        N = self.num_experts / 3
+        # N = self.num_experts / 3
         if self.add_adapter == True:
             # print(attention_mask.shape)  # bs, 1, 1, len
             key_padding_mask = attention_mask.squeeze()
@@ -458,53 +472,107 @@ class XBertLayer(nn.Module):
 
              #-----------------------------adapter_change------------channel fusion------------------#
             topK=self.TopK
-            N = self.num_experts // 3
+            # N = self.num_experts // 3
         
             batch_size, sequence_length, hidden_dim = attention_output.shape
             T = batch_size*sequence_length
             attention_output = attention_output.view(-1,hidden_dim)
             audio_t = audio_t.contiguous().view(-1,hidden_dim)
             vision_t = vision_t.contiguous().view(-1,hidden_dim)
-  
-            gate_logits = self.adapter_atten_gate(torch.stack((attention_output, audio_t+attention_output, vision_t+attention_output), dim=1)).view(-1, N*3)
-            gate_p = F.softmax(gate_logits, dim=1, dtype=torch.float).to(attention_output.dtype)
-            weights, selected_experts = torch.topk(gate_logits, topK)  # T, K
-            weights = F.softmax(weights, dim=1, dtype=torch.float).to(attention_output.dtype)
-            results = torch.zeros_like(attention_output)
+            h = self.modality_fusion(
+                torch.stack((attention_output, audio_t + attention_output, vision_t+attention_output), dim=1)).reshape(
+                    batch_size, sequence_length, 3*hidden_dim)
+            
+            total_lb = torch.tensor(0.0, device=attention_output.device, dtype=attention_output.dtype)
+            h_sa = h
+            h_er = h
+            for _ in range(2):
+                shared_outs = [e(h) for e in self.shared_experts]
+                ts_sa_out = self.ts_sa(h_sa)
+                ts_er_out = self.ts_er(h_er)
 
-            experts = nn.ModuleList([
-                                 self.adapter_1,self.adapter_2,
-                                 self.adapter_audio_1,self.adapter_audio_2,
-                                 self.adapter_vision_1,self.adapter_vision_2,
-                                 ])
-            f = torch.zeros(N*3)
-            P = torch.zeros(N*3)
-            for i, expert in enumerate(experts):
-                f[i] = torch.sum(selected_experts == i).item() /T
-                P[i] = torch.sum(gate_p[:,i]) /T
-                batch_idx, nth_expert = torch.where(selected_experts == i)
-                if i<N:
-                    expert_output = expert(attention_output[batch_idx])
+                logits_shared_sa = self.router_sa(h)
+                logits_shared_er = self.router_er(h)
+
+                vals_sa, idx_sa = torch.topk(logits_shared_sa, topK, dim=-1)
+                vals_er, idx_er = torch.topk(logits_shared_er, topK, dim=-1)
+
+                weights_sa_k = F.softmax(vals_sa, dim=-1, dtype=torch.float).to(attention_output.dtype)
+                weights_er_k = F.softmax(vals_er, dim=-1, dtype=torch.float).to(attention_output.dtype)
+
+                expert_stack_shared = torch.stack(shared_outs, dim=-1)
+
+                weights_full_sa = torch.zeros(batch_size, sequence_length, self.n_shared,
+                                              device=attention_output.device, dtype=attention_output.dtype)
+                weights_full_er = torch.zeros(batch_size, sequence_length, self.n_shared,
+                                              device=attention_output.device, dtype=attention_output.dtype)
+                weights_full_sa.scatter_(-1, idx_sa, weights_sa_k)
+                weights_full_er.scatter_(-1, idx_er, weights_er_k)
+
+                C_shared_sa = torch.einsum('bsdn,bsn->bsd', expert_stack_shared, weights_full_sa)
+                C_shared_er = torch.einsum('bsdn,bsn->bsd', expert_stack_shared, weights_full_er)
+
+                C_SA_total = C_shared_sa + ts_sa_out
+                C_ER_total = C_shared_er + ts_er_out
+
+                h = 0.5*(C_SA_total + C_ER_total)
+
+                h_sa = C_SA_total
+                h_er = C_ER_total
+
+                with torch.no_grad():
+                    dispatched_mask_sa = (weights_full_sa > 0.0).float()
+                    f_shared_sa = dispatched_mask_sa.sum(dim=(0, 1)) / (batch_size*sequence_length)
+                    P_shared_sa = F.softmax(logits_shared_sa, dim=-1).mean(dim=(0, 1))
+
+                    dispatched_mask_er = (weights_full_er > 0.0).float()
+                    f_shared_er = dispatched_mask_er.sum(dim=(0, 1)) / (batch_size*sequence_length)
+                    P_shared_er = F.softmax(logits_shared_er, dim=-1).mean(dim=(0, 1))
+
+                lb_sa = self.lb_loss_module(f_shared_sa, P_shared_sa)
+                lb_er = self.lb_loss_module(f_shared_er, P_shared_er)
+                total_lb += (lb_sa + lb_er)*self.n_shared
+
+            # gate_logits = self.adapter_atten_gate(torch.stack((attention_output, audio_t+attention_output, vision_t+attention_output), dim=1)).view(-1, N*3)
+            # gate_p = F.softmax(gate_logits, dim=1, dtype=torch.float).to(attention_output.dtype)
+            # weights, selected_experts = torch.topk(gate_logits, topK)  # T, K
+            # weights = F.softmax(weights, dim=1, dtype=torch.float).to(attention_output.dtype)
+            # results = torch.zeros_like(attention_output)
+
+            # experts = nn.ModuleList([
+            #                      self.adapter_1,self.adapter_2,
+            #                      self.adapter_audio_1,self.adapter_audio_2,
+            #                      self.adapter_vision_1,self.adapter_vision_2,
+            #                      ])
+            # f = torch.zeros(N*3)
+            # P = torch.zeros(N*3)
+            # for i, expert in enumerate(experts):
+                # f[i] = torch.sum(selected_experts == i).item() /T
+                # P[i] = torch.sum(gate_p[:,i]) /T
+                # batch_idx, nth_expert = torch.where(selected_experts == i)
+                # if i<N:
+                #     expert_output = expert(attention_output[batch_idx])
                 
                 # # print(expert_output.shape)
-                elif i>(N-1) and i<2*N:
-                    expert_output = expert(audio_t[batch_idx]+attention_output[batch_idx])
-                else:
-                    expert_output = expert(vision_t[batch_idx]+attention_output[batch_idx])
-                results[batch_idx] += weights[batch_idx, nth_expert, None] * expert_output
+                # elif i>(N-1) and i<2*N:
+                #     expert_output = expert(audio_t[batch_idx]+attention_output[batch_idx])
+                # else:
+                #     expert_output = expert(vision_t[batch_idx]+attention_output[batch_idx])
+                # results[batch_idx] += weights[batch_idx, nth_expert, None] * expert_output
 
             attention_output = attention_output.reshape(batch_size, sequence_length, hidden_dim)
-            results = results.reshape(batch_size, sequence_length, hidden_dim)
+            # results = results.reshape(batch_size, sequence_length, hidden_dim)
+            results = h
             results = (32/self.rank) * results
             
-            lbloss = Load_Balancing_loss()
-            interval_1 = N
-            interval_2 = N*2
+            # lbloss = Load_Balancing_loss()
+            # interval_1 = N
+            # interval_2 = N*2
 
-            lb_loss = lbloss(f[0:interval_1], P[0:interval_1]) + \
-            lbloss(f[interval_1:interval_2], P[interval_1:interval_2]) + \
-            lbloss(f[interval_2:self.num_experts], P[interval_2:self.num_experts])
-            lb_loss = lb_loss*N
+            # lb_loss = lbloss(f[0:interval_1], P[0:interval_1]) + \
+            # lbloss(f[interval_1:interval_2], P[interval_1:interval_2]) + \
+            # lbloss(f[interval_2:self.num_experts], P[interval_2:self.num_experts])
+            # lb_loss = lb_loss*N
         #------------------------------adapter_change------------------------------#
 
         outputs = self_attention_outputs[1:]  # add self attentions if we output attention weights
@@ -514,10 +582,10 @@ class XBertLayer(nn.Module):
         if self.add_adapter == True:
             layer_output = layer_output + results
         else:
-            lb_loss = 0.
+            total_lb = 0.
         outputs = (layer_output,) + outputs
 
-        return outputs, lb_loss, f
+        return outputs, total_lb, h_sa, h_er
 
     def feed_forward_chunk(self, attention_output):
         intermediate_output = self.intermediate(attention_output)
@@ -573,7 +641,7 @@ class BertEncoder(nn.Module):
             layer_head_mask = head_mask[i] if head_mask is not None else None
             past_key_value = past_key_values[i] if past_key_values is not None else None
 
-            layer_outputs, LBLoss_layer, f_layer = layer_module(
+            layer_outputs, LBLoss_layer, h_sa, h_er = layer_module(
                     hidden_states,
                     attention_mask,
                     layer_head_mask,
@@ -588,7 +656,6 @@ class BertEncoder(nn.Module):
                     # layer = i
                 )
             LBLoss = LBLoss + LBLoss_layer
-            f[i] = f_layer
 
             hidden_states = layer_outputs[0]
         LBLoss = LBLoss / (self.config.num_hidden_layers - self.start_fusion_layer)
@@ -601,7 +668,9 @@ class BertEncoder(nn.Module):
                 all_self_attentions,
                 all_cross_attentions,
                 LBLoss,
-                f
+                f,
+                h_sa,
+                h_er
                 # layer_experts_outputs
                 # Load
             ]
@@ -916,14 +985,13 @@ class XBertModel(BertPreTrainedModel):
         )
         sequence_output = encoder_outputs[0]
         # expert_outputs  = encoder_outputs[-1]
-        Loss = encoder_outputs[-2]
-        f = encoder_outputs[-1]
+        Loss = encoder_outputs[-4]
         # print(LBLoss)
         pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
 
         # if not return_dict:
         # return (sequence_output, pooled_output) + encoder_outputs[1:]
-        return sequence_output, Loss, f
+        return sequence_output, Loss, encoder_outputs[-2], encoder_outputs[-1]
         # return BaseModelOutputWithPoolingAndCrossAttentions(
         #     last_hidden_state=sequence_output,
         #     pooler_output=pooled_output,

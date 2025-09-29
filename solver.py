@@ -13,7 +13,7 @@ from utils.tools import *
 from model import *
 import logging
 # import wandb
-from loss import CosineAlignLoss
+from modules.loss import CosineAlignLoss
 
 class Solver(object):
     def __init__(self, hyp_params, train_loader, dev_loader, test_loader, is_train=True, model=None, pretrained_emb=None):
@@ -36,9 +36,12 @@ class Solver(object):
         else:
             self.device = torch.device("cpu")
 
-        self.criterion = nn.L1Loss(reduction="mean")  
+        # self.criterion = nn.L1Loss(reduction="mean")  
         # self.criterion = nn.HuberLoss(reduction='mean')
-        
+        self.crit_sa = nn.L1Loss(reduction="mean")  
+        self.crit_er = nn.CrossEntropyLoss()
+        self.align_crit = CosineAlignLoss()
+
         # optimizer
         self.optimizer={}
 
@@ -96,7 +99,6 @@ class Solver(object):
 
             model.train()
             proc_loss, proc_size = 0, 0
-            main_loss = 0.0
             multi_con_loss = 0.0
 
             left_batch = self.update_batch
@@ -105,16 +107,37 @@ class Solver(object):
                 vision = batch_data['vision']
                 audio = batch_data['audio']
                 text = batch_data['text']
-                y = batch_data['labels']['M']
-                
+                labels = batch_data['labels']
+                y_sa = labels.get('M', None)
+                y_er = labels.get('ER', None)
+
                 model.zero_grad()
                 with torch.cuda.device(0):
-                    vision, audio, text, y = vision.cuda(), audio.cuda(), text.cuda(), y.cuda()
+                    vision, audio, text, y_sa, y_er = vision.cuda(), audio.cuda(), text.cuda(), y_sa.cuda(), y_er.cuda()
                 
-                batch_size = y.size(0)               
-                preds, LBLoss = model(vision, audio, text)
-                y_loss = criterion(preds, y)
-                loss = y_loss + 0.001*LBLoss
+                if (y_sa != None):
+                    batch_size = y_sa.size(0)
+                else:
+                    batch_size = y_er.size(0)
+                pred_sa, pred_er, LBLoss, pooled_sa, pooled_er = model(vision, audio, text)
+
+                if y_sa is not None:
+                    loss_sa = self.crit_sa(pred_sa, y_sa)
+                else:
+                    loss_sa = 0.0
+                if y_er is not None:
+                    loss_er = self.crit_er(pred_er, y_er)
+                else:
+                    loss_er = 0.0
+
+                loss_align = self.align_crit(pooled_sa, pooled_er)
+
+                lambda_align = self.hp.lambda_align
+                lambda_lb = self.hp.lambda_lb
+
+                loss = loss_sa if isinstance(loss_sa, torch.Tensor) else torch.tensor(
+                    float(loss_sa)).to(self.device) + loss_er if isinstance(loss_er, torch.Tensor) else torch.tensor(
+                        float(loss_er)).to(self.device) + lambda_align*loss_align + lambda_lb*LBLoss
                 loss.backward()
                 
                 # -------------------------------------------------------- #
@@ -128,7 +151,6 @@ class Solver(object):
                 proc_loss += loss.item() * batch_size
                 proc_size += batch_size
                 epoch_loss += loss.item() * batch_size
-                main_loss +=y_loss.item() * batch_size
                 
                     
             return epoch_loss
@@ -137,8 +159,10 @@ class Solver(object):
             model.eval()
             loader = self.test_loader if test else self.dev_loader
             main_loss = 0.0        
-            results = []
-            truths = []
+            results_sa = []
+            results_er = []
+            truths_sa = []
+            truths_er = []
             # expert_output = torch.zeros((12,1,769))
             # expert_distribution = []
             with torch.no_grad():
@@ -146,24 +170,37 @@ class Solver(object):
                     vision = batch_data['vision']
                     audio = batch_data['audio']
                     text = batch_data['text']
-                    y = batch_data['labels']['M']
+                    labels = batch_data['labels']
+                    y_sa = labels.get('M', None)
+                    y_er = labels.get('ER', None)
 
                     with torch.cuda.device(0):
-                        vision, audio, text, y = vision.cuda(), audio.cuda(), text.cuda(), y.cuda()
-                    batch_size = y.size(0)    
-                    preds,_ = model(vision, audio, text)           
-                    criterion = nn.L1Loss()
-                    main_loss += criterion(preds, y).item() * batch_size   
-                    results.append(preds)
-                    truths.append(y)           
-            
+                        vision, audio, text, y_sa, y_er = vision.cuda(), audio.cuda(), text.cuda(), y_sa.cuda(), y_er.cuda()
 
-            results = torch.cat(results)
-            truths = torch.cat(truths)
-            test_preds = results.view(-1).cpu().detach().numpy()
-            test_truth = truths.view(-1).cpu().detach().numpy()
-            avg_main_loss =  np.mean(np.absolute(test_preds - test_truth))
-            return avg_main_loss, results, truths
+                    pred_sa, pred_er, _, _, _ = model(vision, audio, text)
+                    if y_sa != None:
+                        results_sa.append(pred_sa)
+                        truths_sa.append(y_sa)
+                    if y_er != None:
+                        results_er.append(pred_er)
+                        truths_er.append(y_er)
+            
+            avg_main_loss_sa = None
+            avg_main_acc_er = None
+            if len(results_sa) > 0:
+                results_sa = torch.cat(results_sa)
+                truths_sa = torch.cat(truths_sa)
+                test_preds_sa = results_sa.view(-1).cpu().detach().numpy()
+                test_truth_sa = truths_sa.view(-1).cpu().detach().numpy()
+                avg_main_loss_sa = self.crit_sa(test_preds_sa, test_truth_sa)
+            if len(results_er) > 0:
+                results_er = torch.cat(results_er)
+                truths_er = torch.cat(truths_er)
+                test_preds_er = results_er.view(-1).cpu().detach().numpy().astype(int)
+                test_truth_er = truths_er.view(-1).cpu().detach().numpy().astype(int)
+                avg_main_loss_er = self.scrit_er(test_preds_er, test_truth_er)
+
+            return avg_main_loss_sa, avg_main_loss_er, results_sa, truths_sa, results_er, truths_er
 
         best_valid = 1e8
         patience = self.hp.patience
@@ -174,23 +211,9 @@ class Solver(object):
 
             self.epoch = epoch
 
-            train_main_loss= train(model, optimizer_main, criterion)  
-            val_loss, results_val, truths_val, = evaluate(model, criterion, test=False) 
-            test_loss, results, truths, = evaluate(model, criterion, test=True)  
-            
-            test_preds = results.view(-1).cpu().detach().numpy()
-            test_truth = truths.view(-1).cpu().detach().numpy()
-            non_zeros = np.array([i for i, e in enumerate(test_truth) if e != 0])  
-            binary_truth_non0 = test_truth[non_zeros] > 0
-            binary_preds_non0 = test_preds[non_zeros] > 0
-            acc_2_non0 = accuracy_score(binary_truth_non0, binary_preds_non0)
-
-            val_preds = results_val.view(-1).cpu().detach().numpy()
-            val_truth = truths_val.view(-1).cpu().detach().numpy()
-            non_zeros_val = np.array([i for i, e in enumerate(val_truth) if e != 0])
-            binary_truth_non0_val = val_truth[non_zeros_val] > 0
-            binary_preds_non0_val = val_preds[non_zeros_val] > 0
-            acc_2_non0_val = accuracy_score(binary_truth_non0_val, binary_preds_non0_val)
+            train_main_loss = train(model, optimizer_main, criterion)
+            val_loss, loss_er, _, _, _, _ = evaluate(model, criterion, test=False) 
+            _, _, results, truths, test_results_er, test_truths_er = evaluate(model, criterion, test=True)     
             
             end = time.time()
             duration = end-start
@@ -211,19 +234,21 @@ class Solver(object):
             print("-"*50)
             
 
-            if val_loss < best_valid:
+            if val_loss + loss_er < best_valid:
                 # model.model.save()
                
                 patience = self.hp.patience
-                best_valid = val_loss
+                best_valid = val_loss + loss_er
                 best_epoch = epoch
-                best_mae = test_loss
                 if self.hp.dataset in ["mosei_senti", "mosei"]:
                     eval_mosei_senti(results, truths, True)
+                    eval_emotionlines(test_results_er, test_truths_er)
                 elif self.hp.dataset == 'mosi':
                     eval_mosi(results, truths, True)
                 best_results = results
                 best_truths = truths
+                best_results_er = test_results_er
+                best_truths_er = test_truths_er
 
             else:
                 patience -= 1
@@ -234,8 +259,9 @@ class Solver(object):
         logging.info(f'Best epoch: {best_epoch}')
 
         if self.hp.dataset in ["mosei_senti", "mosei"]:
-            best_dict = eval_mosei_senti(best_results, best_truths, True)  
+            best_dict = eval_mosei_senti(best_results, best_truths, True)
+            best_dict_er = eval_emotionlines(best_results_er, best_truths_er)
         elif self.hp.dataset == 'mosi':
             best_dict = eval_mosi(best_results, best_truths, True)
         sys.stdout.flush() 
-        return best_dict
+        return best_dict, best_dict_er

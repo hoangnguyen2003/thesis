@@ -8,12 +8,12 @@ import logging
 import pickle
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, ConcatDataset
 import pandas as pd
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.sampler import SubsetRandomSampler
 
-__all__ = ['MMDataLoader']
+__all__ = ['MMDataLoader', 'get_IEMOCAP_loaders', 'get_MELD_loaders']
 
 logger = logging.getLogger('MSA')
 
@@ -210,56 +210,44 @@ class MELDDataset(Dataset):
         return [pad_sequence(dat[i]) if i<4 else pad_sequence(dat[i], True)
                 if i<6 else dat[i].tolist() for i in dat]
 
-def get_train_valid_sampler(trainset, valid=0.1, dataset='MELD'):
+def get_train_valid_sampler(trainset, valid=0.1):
     size = len(trainset)
     idx = list(range(size))
     split = int(valid*size)
     return SubsetRandomSampler(idx[split:]), SubsetRandomSampler(idx[:split])
 
-def get_IEMOCAP_loaders(batch_size=32, valid=0.1, num_workers=0, pin_memory=False):
+def get_IEMOCAP_loaders(args):
     trainset = IEMOCAPDataset()
-    train_sampler, valid_sampler = get_train_valid_sampler(trainset, valid)
+    train_sampler, valid_sampler = get_train_valid_sampler(trainset)
     train_loader = DataLoader(trainset,
-                              batch_size=batch_size,
+                              batch_size=args.batch_size,
                               sampler=train_sampler,
-                              collate_fn=trainset.collate_fn,
-                              num_workers=num_workers,
-                              pin_memory=pin_memory)
+                              collate_fn=trainset.collate_fn)
     valid_loader = DataLoader(trainset,
-                              batch_size=batch_size,
+                              batch_size=args.batch_size,
                               sampler=valid_sampler,
-                              collate_fn=trainset.collate_fn,
-                              num_workers=num_workers,
-                              pin_memory=pin_memory)
+                              collate_fn=trainset.collate_fn)
 
     testset = IEMOCAPDataset(train=False)
     test_loader = DataLoader(testset,
-                             batch_size=batch_size,
-                             collate_fn=testset.collate_fn,
-                             num_workers=num_workers,
-                             pin_memory=pin_memory)
+                             batch_size=args.batch_size,
+                             collate_fn=testset.collate_fn)
     return train_loader, valid_loader, test_loader
 
-def get_MELD_loaders(batch_size=32, valid=0.1, num_workers=0, pin_memory=False):
+def get_MELD_loaders(args):
     trainset = MELDDataset('datasets/MELD/meld_multi_features.pkl')
-    train_sampler, valid_sampler = get_train_valid_sampler(trainset, valid, 'MELD')
+    train_sampler, valid_sampler = get_train_valid_sampler(trainset)
     train_loader = DataLoader(trainset,
-                              batch_size=batch_size,
+                              batch_size=args.batch_size,
                               sampler=train_sampler,
-                              collate_fn=trainset.collate_fn,
-                              num_workers=num_workers,
-                              pin_memory=pin_memory)
+                              collate_fn=trainset.collate_fn)
     valid_loader = DataLoader(trainset,
-                              batch_size=batch_size,
+                              batch_size=args.batch_size,
                               sampler=valid_sampler,
-                              collate_fn=trainset.collate_fn,
-                              num_workers=num_workers,
-                              pin_memory=pin_memory)
+                              collate_fn=trainset.collate_fn)
 
     testset = MELDDataset('datasets/MELD/meld_multimodal_features.pkl', train=False)
     test_loader = DataLoader(testset,
-                             batch_size=batch_size,
-                             collate_fn=testset.collate_fn,
-                             num_workers=num_workers,
-                             pin_memory=pin_memory)
+                             batch_size=args.batch_size,
+                             collate_fn=testset.collate_fn)
     return train_loader, valid_loader, test_loader

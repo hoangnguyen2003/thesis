@@ -25,10 +25,6 @@ class MMA_Bert(nn.Module):
             setattr(config,'start_fusion_layer',hp.start_fusion_layer)
         if not hasattr(config, 'n_shared'):
             setattr(config, 'n_shared', hp.n_shared)
-        if not hasattr(config, 'n_ts_sa'):
-            setattr(config, 'n_ts_sa', hp.n_ts_sa)
-        if not hasattr(config, 'n_ts_er'):
-            setattr(config, 'n_ts_er', hp.n_ts_er)
         self.rank = hp.rank
         peft_config = LoraConfig(inference_mode=False, r=hp.lora_rank, lora_alpha=32, lora_dropout=0.1)
         model = XBertModel.from_pretrained(hp.bert_path, config=config)
@@ -50,12 +46,12 @@ class MMA_Bert(nn.Module):
         segment_ids: token_type_ids
         """
         input_ids, input_mask, segment_ids = text[:,0,:].long(), text[:,1,:].float(), text[:,2,:].long()
-        last_hidden_states, LBLoss, ep_d = self.bert_model(input_ids=input_ids,
+        last_hidden_states, LBLoss = self.bert_model(input_ids=input_ids,
                                             attention_mask=input_mask,
                                             token_type_ids=segment_ids,
                                             vision=vision,
                                             audio=audio)
-        return last_hidden_states, LBLoss, ep_d
+        return last_hidden_states, LBLoss
 
 class MMA(nn.Module):
     def __init__(self,hp):
@@ -78,11 +74,13 @@ class MMA(nn.Module):
     def forward(self, vision, audio, text):   
         batch_size = text.shape[0]
         input_ids, input_mask = text[:,:,0].long(), text[:,:,1].float()
-        hidden_states, LBLoss, ep_d = self.model(text, vision, audio)
+        hidden_states, LBLoss, last_C_sa, last_C_er = self.model(text, vision, audio)
         # embedding = hidden_states[:,0,:]
         # pred = self.cls_head(embedding)
-        emb_sa = hidden_states[:,0,:]
-        emb_er = hidden_states[:,0,:]
+        hidden_sa = hidden_states + last_C_sa
+        hidden_er = hidden_states + last_C_er
+        emb_sa = hidden_sa[:, 0, :]
+        emb_er = hidden_er[:, 0, :]
         pred_SA = self.cls_head_SA(emb_sa)
         pred_ER = self.cls_head_ER(emb_er)
         return pred_SA, pred_ER, LBLoss, emb_sa, emb_er

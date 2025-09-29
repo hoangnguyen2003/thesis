@@ -144,3 +144,21 @@ class RouterPFMultiHeadAttention(nn.Module):
 
         return out
 
+class PFSelfAttention(nn.Module):
+    def __init__(self, embed_dim=768):
+        super(PFSelfAttention, self).__init__()
+        self.embed_dim = embed_dim
+                
+    def forward(self, x):
+        batch_size, seq_length, embed_dim = x.size()  # batch_size, 3, 768
+        assert embed_dim == self.embed_dim, "Embedding dimension must match"
+        
+        Q =(x)
+        K = (x)
+        V = (x)
+        
+        attn_weights = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.embed_dim)
+        attn_weights = F.softmax(attn_weights, dim=-1)
+        attn_output = torch.matmul(attn_weights, V)
+        
+        return attn_output

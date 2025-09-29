@@ -3,6 +3,7 @@ from sklearn.metrics import classification_report
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import accuracy_score, f1_score
 import logging
+from itertools import chain
 
 def multiclass_acc(preds, truths):
     """
@@ -74,3 +75,8 @@ def eval_mosei_senti(results, truths, exclude_zero=False):
 
 def eval_mosi(results, truths, exclude_zero=False):
     return eval_mosei_senti(results, truths, exclude_zero)
+
+def eval_emotionlines(results, truths):
+    truths = list(chain(*truths))
+    report = classification_report(truths, results)
+    print(report)

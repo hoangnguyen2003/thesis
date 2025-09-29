@@ -104,7 +104,11 @@ def get_args():
                         help='frequency of result logging (default: 100)')
     parser.add_argument('--seed', type=int, default=7777, 
                         help='random seed')
-    
+     
+    parser.add_argument('--lambda_align', type=float, default=0.05)
+    parser.add_argument('--lambda_lb', type=float, default=1e-4)
+    parser.add_argument('--n_shared', type=int, default=15)
+
     args = parser.parse_args()
     return args
 
