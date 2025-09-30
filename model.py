@@ -65,7 +65,7 @@ class MMA(nn.Module):
                                   hidden_size=128,
                                   n_class=1,
                                   dropout=0.2)
-        self.num_emotions = 6
+        self.num_emotions = 3
         self.cls_head_ER = SubNet(in_size=hidden_size,
                                   hidden_size=128,
                                   n_class=self.num_emotions,
