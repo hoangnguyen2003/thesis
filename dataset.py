@@ -239,7 +239,7 @@ def get_MELD_loaders(args):
                               sampler=valid_sampler,
                               collate_fn=trainset.collate_fn)
 
-    testset = MELDDataset('datasets/MELD/meld_multimodal_features.pkl', train=False)
+    testset = MELDDataset('datasets/MELD/meld_multi_features.pkl', train=False)
     test_loader = DataLoader(testset,
                              batch_size=args.batch_size,
                              collate_fn=testset.collate_fn)
