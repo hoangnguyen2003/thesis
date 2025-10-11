@@ -1,9 +1,3 @@
-'''
-* @name: dataset.py
-* @description: Dataset loading functions. Note: The code source references MMSA (https://github.com/thuiar/MMSA/tree/master).
-'''
-
-
 import logging
 import pickle
 import numpy as np
@@ -16,7 +10,6 @@ from torch.utils.data.sampler import SubsetRandomSampler
 __all__ = ['MMDataLoader', 'get_IEMOCAP_loaders', 'get_MELD_loaders']
 
 logger = logging.getLogger('MSA')
-
 
 class MMDataset(Dataset):
     def __init__(self, args, mode='train'):
