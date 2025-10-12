@@ -122,9 +122,6 @@ def MMDataLoader(args):
     
     return dataLoader
 
-'''
-    label index mapping = {'hap': 0, 'sad': 1, 'neu': 2, 'ang': 3, 'exc': 4, 'fru': 5}
-'''
 class IEMOCAPDataset(Dataset):
     def __init__(self, train=True):
         self.videoIDs, self.videoSpeakers, self.videoLabels, self.videoText, self.roberta2, self.roberta3, self.roberta4, self.videoAudio, self.videoVisual, self.videoSentence, self.trainVid, self.testVid = pickle.load(
@@ -160,9 +157,6 @@ class IEMOCAPDataset(Dataset):
         return [pad_sequence(dat[i]) if i<4 else pad_sequence(dat[i], True)
                 if i<6 else dat[i].tolist() for i in dat]
 
-'''
-    label index mapping = {'neutral': 0, 'surprise': 1, 'fear': 2, 'sadness': 3, 'joy': 4, 'disgust': 5, 'anger': 6}
-'''
 class MELDDataset(Dataset):
     def __init__(self, path, train=True):
         self.videoIDs, self.videoSpeakers, self.videoLabels, _, self.videoText, self.roberta2, self.roberta3, self.roberta4, self.videoAudio, self.videoVisual, self.videoSentence, self.trainVid, self.testVid, _ = pickle.load(open(path, 'rb'))
