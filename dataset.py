@@ -47,13 +47,9 @@ class MMDataset(Dataset):
         self.labels = {}
         if 'regression'+'_labels' in data[self.mode]:
             self.labels['M'] = data[self.mode]['regression'+'_labels'].astype(np.float32)
+            self.labels['ER'] = None
         else:
             self.labels['M'] = None
-
-        if 'classification_labels' in data[self.mode]:
-            self.labels['ER'] = data[self.mode]['classification_labels'].astype(np.float32)
-        else:
-            self.labels['ER'] = None
 
         if self.args.dataset == 'sims':
             for m in "TAV":
@@ -126,11 +122,13 @@ def MMDataLoader(args):
     
     return dataLoader
 
-
+'''
+    label index mapping = {'hap': 0, 'sad': 1, 'neu': 2, 'ang': 3, 'exc': 4, 'fru': 5}
+'''
 class IEMOCAPDataset(Dataset):
     def __init__(self, train=True):
         self.videoIDs, self.videoSpeakers, self.videoLabels, self.videoText, self.roberta2, self.roberta3, self.roberta4, self.videoAudio, self.videoVisual, self.videoSentence, self.trainVid, self.testVid = pickle.load(
-            open('datasets/IEMOCAP/iemocap_multi_features.pkl', 'rb'), encoding='latin1')
+            open('/kaggle/input/iemocap/iemocap_multi_features.pkl', 'rb'), encoding='latin1')
         self.keys = [x for x in (self.trainVid if train else self.testVid)]
 
         self.len = len(self.keys)
@@ -162,6 +160,9 @@ class IEMOCAPDataset(Dataset):
         return [pad_sequence(dat[i]) if i<4 else pad_sequence(dat[i], True)
                 if i<6 else dat[i].tolist() for i in dat]
 
+'''
+    label index mapping = {'neutral': 0, 'surprise': 1, 'fear': 2, 'sadness': 3, 'joy': 4, 'disgust': 5, 'anger': 6}
+'''
 class MELDDataset(Dataset):
     def __init__(self, path, train=True):
         self.videoIDs, self.videoSpeakers, self.videoLabels, _, self.videoText, self.roberta2, self.roberta3, self.roberta4, self.videoAudio, self.videoVisual, self.videoSentence, self.trainVid, self.testVid, _ = pickle.load(open(path, 'rb'))
@@ -228,7 +229,7 @@ def get_IEMOCAP_loaders(args):
     return train_loader, valid_loader, test_loader
 
 def get_MELD_loaders(args):
-    trainset = MELDDataset('datasets/MELD/meld_multi_features.pkl')
+    trainset = MELDDataset('/kaggle/input/melddd/meld_multi_features.pkl')
     train_sampler, valid_sampler = get_train_valid_sampler(trainset)
     train_loader = DataLoader(trainset,
                               batch_size=args.batch_size,
@@ -239,7 +240,7 @@ def get_MELD_loaders(args):
                               sampler=valid_sampler,
                               collate_fn=trainset.collate_fn)
 
-    testset = MELDDataset('datasets/MELD/meld_multi_features.pkl', train=False)
+    testset = MELDDataset('/kaggle/input/melddd/meld_multi_features.pkl', train=False)
     test_loader = DataLoader(testset,
                              batch_size=args.batch_size,
                              collate_fn=testset.collate_fn)
