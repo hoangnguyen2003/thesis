@@ -206,7 +206,8 @@ def pipeline(args):
         def __init__(self, items): self.items = items
         def __len__(self): return len(self.items)
         def __getitem__(self, idx): return self.items[idx]
-    loader = DataLoader(SimpleListDataset(utterances), batch_size=args.batch_size, shuffle=True)
+    loader = DataLoader(SimpleListDataset(utterances), batch_size=args.batch_size,
+                        shuffle=True, collate_fn=lambda x: x)
 
     optim = torch.optim.Adam(list(encoder.parameters())
                              + list(head_msa.parameters()) + list(head_erc.parameters())
