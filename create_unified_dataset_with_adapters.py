@@ -114,17 +114,49 @@ def pad_time_and_stack(list_of_tensors):
 
 IEMO_ID_TO_NAME = {0: 'hap', 1: 'sad', 2: 'neu', 3: 'ang', 4: 'exc', 5: 'fru'}
 MELD_ID_TO_NAME = {0: 'neutral', 1: 'surprise', 2: 'fear', 3: 'sadness', 4: 'joy', 5: 'disgust', 6: 'anger'}
+IEMO_NAME_TO_NORMALIZED = {
+    'hap': 'joy',
+    'sad': 'sadness',
+    'neu': 'neutral',
+    'ang': 'anger',
+    'exc': 'exc',
+    'fru': 'fru'
+}
+MELD_NAME_TO_NORMALIZED = {
+    'neutral': 'neutral','surprise':'surprise','fear':'fear','sadness':'sadness','joy':'joy','disgust':'disgust','anger':'anger'
+}
+UNIFIED_NAMES = sorted(list({
+    *IEMO_NAME_TO_NORMALIZED.values(),
+    *MELD_NAME_TO_NORMALIZED.values()
+}))
+UNIFIED_NAME_TO_ID = {name: idx for idx, name in enumerate(UNIFIED_NAMES)}
+UNIFIED_ID_TO_NAME = {v:k for k,v in UNIFIED_NAME_TO_ID.items()}
 EMO_NAME_TO_POL = {'joy': 'pos', 'exc': 'pos', 'hap': 'pos',
                    'neutral': 'neu', 'neu': 'neu', 'surprise': 'neu',
                    'sadness': 'neg', 'sad': 'neg', 'anger': 'neg', 'ang': 'neg',
                    'disgust': 'neg', 'fear': 'neg', 'fru': 'neg'}
 
-def emo_id_to_polarity(src, eid):
-    if src.startswith('iemo'):
-        name = IEMO_ID_TO_NAME.get(int(eid), None)
+
+# helper to map (source, original_emotion_id) -> unified_id
+def map_original_emotion_to_unified(src, orig_eid):
+    if src.startswith('iemo') or src.startswith('iemocap'):
+        name = IEMO_ID_TO_NAME.get(int(orig_eid), None)
+        if name is None:
+            return None
+        norm = IEMO_NAME_TO_NORMALIZED.get(name, name)
     else:
-        name = MELD_ID_TO_NAME.get(int(eid), None)
-    if name is None: return 'neu'
+        # assume MELD-like
+        name = MELD_ID_TO_NAME.get(int(orig_eid), None)
+        if name is None:
+            return None
+        norm = MELD_NAME_TO_NORMALIZED.get(name, name)
+    uid = UNIFIED_NAME_TO_ID.get(norm, None)
+    return uid  # could be None if mapping missing
+
+def emo_unified_id_to_polarity(unified_id):
+    name = UNIFIED_ID_TO_NAME.get(int(unified_id), None)
+    if name is None:
+        return 'neu'
     return EMO_NAME_TO_POL.get(name, 'neu')
 
 def pipeline(args):
@@ -261,8 +293,8 @@ def pipeline(args):
                     p = 'pos' if v > args.pos_th else ('neg' if v < args.neg_th else 'neu')
                     msa_pol[p].append(i)
                 if isinstance(er, torch.Tensor) and er.numel() == 1:
-                    eid = int(er.item())
-                    p = emo_id_to_polarity(sources[i], eid)
+                    unified_eid = map_original_emotion_to_unified(sources[i], int(er.item()))
+                    p = emo_unified_id_to_polarity(unified_eid)
                     erc_pol[p].append(i)
 
             posA = []; posB = []
@@ -299,9 +331,10 @@ def pipeline(args):
 
             z = encoder(t, a, v)
             if isinstance(s['labels'].get('ER', None), torch.Tensor) and s['labels']['ER'].numel() == 1:
+                unified_eid = map_original_emotion_to_unified(src, int(s['labels']['ER'].item()))
                 e = head_erc(z).cpu().numpy()[0]
                 ref_erc_emb.append(e)
-                ref_erc_lab.append(int(s['labels']['ER'].item()))
+                ref_erc_lab.append(int(unified_eid))
             if isinstance(s['labels'].get('M', None), torch.Tensor) and s['labels']['M'].numel() == 1:
                 m = head_msa(z).cpu().numpy()[0]
                 ref_msa_emb.append(m)
@@ -324,7 +357,8 @@ def pipeline(args):
             if isinstance(s['labels'].get('M', None), torch.Tensor) and s['labels']['M'].numel() == 1:
                 entry['labels']['M'] = s['labels']['M'].clone()
             if isinstance(s['labels'].get('ER', None), torch.Tensor) and s['labels']['ER'].numel() == 1:
-                entry['labels']['ER'] = s['labels']['ER'].clone()
+                ueid = map_original_emotion_to_unified(src, int(s['labels']['ER'].item()))
+                entry['labels']['ER'] = torch.tensor([int(ueid)], dtype=torch.long)
 
             t = text_adapters[src](s['text'].to(device)).unsqueeze(0)
             a = audio_adapters[src](s['audio'].to(device)).unsqueeze(0)
