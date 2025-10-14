@@ -1,7 +1,7 @@
 import argparse
 import random
-import pickle
-from collections import Counter, defaultdict
+import pickle, csv, os
+from collections import defaultdict
 import numpy as np
 import torch
 import torch.nn as nn
