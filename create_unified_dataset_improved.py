@@ -301,11 +301,6 @@ def pipeline(args):
     loader = DataLoader(SimpleListDataset(utterances), batch_size=args.batch_size,
                         shuffle=True, collate_fn=lambda x: x)
 
-    optim = torch.optim.Adam(list(encoder.parameters())
-                             + list(head_msa.parameters()) + list(head_erc.parameters())
-                             + list(text_adapters.parameters())
-                             + list(audio_adapters.parameters()) + list(vis_adapters.parameters()), lr=args.lr)
-
     # training loop: for each batch, apply adapters per-sample then pad/time-stack
     for epoch in range(1, args.epochs+1):
         model.train()
@@ -338,6 +333,7 @@ def pipeline(args):
             out = model(text_b, audio_b, vis_b)
             proj_msa = out['proj_msa']; proj_erc = out['proj_erc']
             logits_erc = out['logits_erc']; pred_m = out['pred_m']
+
             # Build positive pairs for contrastive using polarity buckets
             # collect indices for msa-labeled and erc-labeled
             msa_idxs = []
@@ -352,6 +348,7 @@ def pipeline(args):
                     uid = int(er_unified_list[i])
                     p = unified_id_to_polarity(uid)
                     erc_pol[p].append(i); erc_idxs.append(i)
+
             posA=[]; posB=[]
             for p in ['pos','neu','neg']:
                 A = msa_pol.get(p, []); B = erc_pol.get(p, [])
@@ -359,6 +356,7 @@ def pipeline(args):
                 k = min(len(A), len(B))
                 selA = random.sample(A, k); selB = random.sample(B, k)
                 posA.extend(selA); posB.extend(selB)
+                
             loss_nt = torch.tensor(0.0, device=device)
             if len(posA) > 0:
                 loss_nt = nt_xent_pairs(proj_msa[posA], proj_erc[posB], temp=args.temp)
