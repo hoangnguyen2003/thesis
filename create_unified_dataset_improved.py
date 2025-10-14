@@ -121,12 +121,28 @@ class AttentivePool(nn.Module):
         return pooled
 
 class TemporalTransformerEncoder(nn.Module):
-    def __init__(self, dim, nhead=4, layers=1, dropout=0.1):
+    def __init__(self, dim, preferred_nhead=4, layers=1, dropout=0.1):
+        """
+        dim: embedding dimension (d_model)
+        preferred_nhead: muốn dùng bao nhiêu head nếu có thể (ví dụ 4)
+        nếu dim % preferred_nhead != 0 thì sẽ tìm head nhỏ hơn (preferred_nhead-1, ...) mà chia hết
+        fallback -> nhead = 1
+        """
         super().__init__()
-        layer = nn.TransformerEncoderLayer(d_model=dim, nhead=nhead, dim_feedforward=dim*2, dropout=dropout, activation='relu')
-        self.tr = nn.TransformerEncoder(layer, num_layers=layers)
+        # tìm nhead hợp lệ (lớn nhất <= preferred_nhead chia hết cho dim)
+        nhead = 1
+        for h in range(preferred_nhead, 0, -1):
+            if dim % h == 0:
+                nhead = h
+                break
+        if nhead != preferred_nhead:
+            # in cảnh báo để bạn biết đã đổi
+            print(f"[WARN] TemporalTransformerEncoder: dim={dim} not divisible by preferred_nhead={preferred_nhead}. Using nhead={nhead} instead.")
+        encoder_layer = nn.TransformerEncoderLayer(d_model=dim, nhead=nhead, dim_feedforward=max(dim*2, 2048), dropout=dropout, activation='relu')
+        self.tr = nn.TransformerEncoder(encoder_layer, num_layers=layers)
+
     def forward(self, x):
-        # x: (B, T, D) -> (T, B, D)
+        # x: (B, T, D). Transformer expects (T, B, D)
         out = self.tr(x.transpose(0,1)).transpose(0,1)
         return out
 
@@ -134,7 +150,7 @@ class PerModalityEncoder(nn.Module):
     def __init__(self, in_dim, target_dim):
         super().__init__()
         self.proj = nn.Linear(in_dim, target_dim)
-        self.temporal = TemporalTransformerEncoder(target_dim, nhead=4, layers=1)
+        self.temporal = TemporalTransformerEncoder(target_dim, preferred_nhead=4, layers=1)
         self.pool = AttentivePool(target_dim)
     def forward(self, x):
         # x: (B, T, in_dim)
