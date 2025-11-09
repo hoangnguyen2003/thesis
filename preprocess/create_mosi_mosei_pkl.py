@@ -2,11 +2,11 @@ import pickle
 import pandas as pd
 
 # pkl_path = "datasets/CMU-MOSI/aligned_50.pkl"
-# csv_path = "datasets/csv/MOSI-label.csv"
-# output_path = "datasets/final/cmu-mosi.pkl"
+# csv_path = "datasets/CMU-MOSI/MOSI-label.csv"
+# output_path = "datasets/CMU-MOSI/cmu_mosi.pkl"
 pkl_path = "datasets/CMU-MOSEI/aligned_50.pkl"
-csv_path = "datasets/csv/MOSEI-label.csv"
-output_path = "datasets/final/cmu-mosei.pkl"
+csv_path = "datasets/CMU-MOSEI/MOSEI-label.csv"
+output_path = "datasets/CMU-MOSEI/cmu_mosei.pkl"
 
 with open(pkl_path, "rb") as f:
     data = pickle.load(f)
@@ -15,20 +15,23 @@ df = pd.read_csv(csv_path)
 
 df["id"] = df["video_id"].astype(str) + "$_$" + df["clip_id"].astype(str)
 
-label_map = dict(zip(df["id"], df["emotion_id"]))
+iemocap_map = dict(zip(df["id"], df["iemocap_id"]))
+meld_map = dict(zip(df["id"], df["meld_id"]))
 
-for key in ['train', 'valid', 'test']:
-    ids = data[key]["id"]
-    labels = data[key]["classification_labels"]
-
+for split in ['train', 'valid', 'test']:
     updated_count = 0
-    for i, sample_id in enumerate(ids):
-        if sample_id in label_map:
-            new_label = label_map[sample_id]
-            labels[i] = new_label
+    iemocap_ids = []
+    meld_ids = []
+    for i, sample_id in enumerate(data[split]["id"]):
+        if sample_id in iemocap_map:
+            iemocap_ids.append(iemocap_map[sample_id])
+            meld_ids.append(meld_map[sample_id])
             updated_count += 1
+    
+    data[split]["iemocap_id"] = iemocap_ids
+    data[split]["meld_id"] = meld_ids
 
-    print(f"{updated_count}/{len(ids)}")
+    print(f"{updated_count}/{len(data[split]["id"])}")
 
 with open(output_path, "wb") as f:
     pickle.dump(data, f)
