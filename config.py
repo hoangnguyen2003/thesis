@@ -109,6 +109,9 @@ def get_args():
     parser.add_argument('--lambda_lb', type=float, default=1e-4)
     parser.add_argument('--n_shared', type=int, default=15)
 
+    parser.add_argument("--use_cross_iemocap_labels", action="store_true")
+    parser.add_argument("--use_cross_meld_labels", action="store_true")
+
     args = parser.parse_args()
     return args
 

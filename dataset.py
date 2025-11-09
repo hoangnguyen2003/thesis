@@ -41,16 +41,12 @@ class MMDataset(Dataset):
 
         self.rawText = data[self.mode]['raw_text']
         self.ids = data[self.mode]['id']
-        # self.labels = {
-        #     'M': data[self.mode]['regression'+'_labels'].astype(np.float32)
-        # }
         self.labels = {}
-        if 'regression'+'_labels' in data[self.mode]:
-            self.labels['M'] = data[self.mode]['regression'+'_labels'].astype(np.float32)
-            self.labels['ER'] = None
-        else:
-            self.labels['M'] = None
-
+        self.labels['M'] = data[self.mode]['regression_labels'].astype(np.float32)
+        if self.args.use_cross_iemocap_labels:
+            self.labels['ER'] = data[self.mode]['iemocap_id'].astype(np.float32)
+        elif self.args.use_cross_meld_labels:
+            self.labels['ER'] = data[self.mode]['meld_id'].astype(np.float32)
         if self.args.dataset == 'sims':
             for m in "TAV":
                 self.labels[m] = data[self.mode]['regression'+'_labels_'+m]
