@@ -31,7 +31,7 @@ for split in ['train', 'valid', 'test']:
     data[split]["iemocap_id"] = iemocap_ids
     data[split]["meld_id"] = meld_ids
 
-    print(f"{updated_count}/{len(data[split]["id"])}")
+    print(f"{updated_count}/{len(data[split]['id'])}")
 
 with open(output_path, "wb") as f:
     pickle.dump(data, f)
