@@ -43,7 +43,7 @@ def get_args():
 
     # Dataset
     parser.add_argument('--dataset', type=str, default='mosei', choices=['mosi','mosei'],
-                        help='dataset to use (default: mosi)')
+                        help='dataset to use (default: mosei)')
     parser.add_argument('--data_path', type=str, default='aligned_50.pkl', 
                         help='path for storing the dataset')
     parser.add_argument('--bert_path', type=str, default='bert-base-uncased',
