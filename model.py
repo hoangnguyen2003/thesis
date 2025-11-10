@@ -65,7 +65,10 @@ class MMA(nn.Module):
                                   hidden_size=128,
                                   n_class=1,
                                   dropout=0.2)
-        self.num_emotions = 6
+        if hp.use_cross_iemocap_labels or hp.dataset == 'iemocap':
+            self.num_emotions = 6
+        elif hp.use_cross_meld_labels or hp.dataset == 'meld':
+            self.num_emotions = 7
         self.cls_head_ER = SubNet(in_size=hidden_size,
                                   hidden_size=128,
                                   n_class=self.num_emotions,

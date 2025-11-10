@@ -133,9 +133,9 @@ class Solver(object):
                 lambda_align = self.hp.lambda_align
                 lambda_lb = self.hp.lambda_lb
 
-                loss = loss_sa if isinstance(loss_sa, torch.Tensor) else torch.tensor(
-                    float(loss_sa)).to(self.device) + loss_er if isinstance(loss_er, torch.Tensor) else torch.tensor(
-                        float(loss_er)).to(self.device) + lambda_align*loss_align + lambda_lb*LBLoss
+                loss = (loss_sa if isinstance(loss_sa, torch.Tensor) else torch.tensor(
+                    float(loss_sa)).to(self.device)) + (loss_er if isinstance(loss_er, torch.Tensor) else torch.tensor(
+                        float(loss_er)).to(self.device)) + lambda_align*loss_align + lambda_lb*LBLoss
                 loss.backward()
                 
                 # -------------------------------------------------------- #
@@ -241,6 +241,8 @@ class Solver(object):
                                       test_truths_er.cpu().numpy() if torch.is_tensor(test_truths_er) else test_truths_er)
                 elif self.hp.dataset == 'mosi':
                     eval_mosi(results, truths, True)
+                    eval_emotionlines(test_results_er.argmax(dim=1).cpu().numpy() if torch.is_tensor(test_results_er) else test_results_er,
+                                      test_truths_er.cpu().numpy() if torch.is_tensor(test_truths_er) else test_truths_er)
                 best_results = results
                 best_truths = truths
                 best_results_er = test_results_er.argmax(dim=1).cpu().numpy() if torch.is_tensor(test_results_er) else test_results_er
@@ -259,5 +261,6 @@ class Solver(object):
             best_dict_er = eval_emotionlines(best_results_er, best_truths_er)
         elif self.hp.dataset == 'mosi':
             best_dict = eval_mosi(best_results, best_truths, True)
+            best_dict_er = eval_emotionlines(best_results_er, best_truths_er)
         sys.stdout.flush() 
         return best_dict, best_dict_er
