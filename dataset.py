@@ -6,10 +6,13 @@ from torch.utils.data import Dataset, DataLoader, ConcatDataset
 import pandas as pd
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.sampler import SubsetRandomSampler
+from sklearn.utils.class_weight import compute_class_weight
 
 __all__ = ['MMDataLoader', 'get_IEMOCAP_loaders', 'get_MELD_loaders']
 
 logger = logging.getLogger('MSA')
+
+class_weights = None
 
 class MMDataset(Dataset):
     def __init__(self, args, mode='train'):
@@ -47,6 +50,16 @@ class MMDataset(Dataset):
             self.labels['ER'] = np.array(data[self.mode]['iemocap_id']).astype(np.int64)
         elif self.args.use_cross_meld_labels:
             self.labels['ER'] = np.array(data[self.mode]['meld_id']).astype(np.int64)
+        
+        if self.args.use_cross_iemocap_labels:
+            num_classes = 6
+        elif self.args.use_cross_meld_labels:
+            num_classes = 7
+        labels = np.array(self.labels['ER'])
+        classes = np.arange(num_classes)
+        global class_weights
+        class_weights = compute_class_weight("balanced", classes, labels)
+        
         if self.args.dataset == 'sims':
             for m in "TAV":
                 self.labels[m] = data[self.mode]['regression'+'_labels_'+m]

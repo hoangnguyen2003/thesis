@@ -15,6 +15,7 @@ import logging
 # import wandb
 from modules.loss import CosineAlignLoss
 from tqdm import tqdm
+from dataset import class_weights
 
 class Solver(object):
     def __init__(self, hyp_params, train_loader, dev_loader, test_loader, is_train=True, model=None, pretrained_emb=None):
@@ -40,7 +41,7 @@ class Solver(object):
         # self.criterion = nn.L1Loss(reduction="mean")  
         # self.criterion = nn.HuberLoss(reduction='mean')
         self.crit_sa = nn.L1Loss(reduction="mean")  
-        self.crit_er = nn.CrossEntropyLoss()
+        self.crit_er = nn.CrossEntropyLoss(weight=class_weights)
         self.align_crit = CosineAlignLoss()
 
         # optimizer
