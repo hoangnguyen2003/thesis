@@ -80,8 +80,10 @@ class MMA(nn.Module):
         hidden_states, LBLoss, last_C_sa, last_C_er = self.model(text, vision, audio)
         # embedding = hidden_states[:,0,:]
         # pred = self.cls_head(embedding)
-        hidden_sa = hidden_states + last_C_sa
-        hidden_er = hidden_states + last_C_er
+        # hidden_sa = hidden_states + last_C_sa
+        hidden_sa = last_C_sa
+        # hidden_er = hidden_states + last_C_er
+        hidden_er = last_C_er
         emb_sa = hidden_sa[:, 0, :]
         emb_er = hidden_er[:, 0, :]
         pred_SA = self.cls_head_SA(emb_sa)

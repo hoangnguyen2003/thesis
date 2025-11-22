@@ -515,7 +515,8 @@ class XBertLayer(nn.Module):
                 C_SA_total = C_shared_sa + ts_sa_out
                 C_ER_total = C_shared_er + ts_er_out
 
-                h = 0.5*(C_SA_total + C_ER_total)
+                # h = 0.5*(C_SA_total + C_ER_total)
+                h = C_SA_total + C_ER_total
 
                 h_sa = C_SA_total
                 h_er = C_ER_total
@@ -580,6 +581,8 @@ class XBertLayer(nn.Module):
             self.feed_forward_chunk, self.chunk_size_feed_forward, self.seq_len_dim, attention_output
         )
         if self.add_adapter == True:
+            h_sa = layer_output + h_sa
+            h_er = layer_output + h_er
             layer_output = layer_output + results
         else:
             total_lb = 0.
