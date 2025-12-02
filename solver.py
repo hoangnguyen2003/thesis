@@ -142,7 +142,7 @@ class Solver(object):
 
                 loss = (loss_sa if isinstance(loss_sa, torch.Tensor) else torch.tensor(
                     float(loss_sa)).to(self.device)) + (loss_er if isinstance(loss_er, torch.Tensor) else torch.tensor(
-                        float(loss_er)).to(self.device)) + lambda_align*loss_align + lambda_lb*LBLoss
+                        float(loss_er)).to(self.device)) + lambda_lb*LBLoss
                 loss.backward()
                 
                 # -------------------------------------------------------- #
