@@ -28,7 +28,7 @@ class CosineAlignLoss(nn.Module):
         return torch.mean(1.0 - sim)
     
 class FocalLoss(nn.Module):
-    def __init__(self, gamma=2, alpha=None, reduction='mean', num_classes=None):
+    def __init__(self, gamma=3, alpha=None, reduction='mean', num_classes=None):
         super(FocalLoss, self).__init__()
         self.gamma = gamma
         self.alpha = alpha
