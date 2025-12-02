@@ -47,7 +47,7 @@ class Solver(object):
             num_cls = 6
         elif hp.use_cross_meld_labels or hp.dataset == 'meld':
             num_cls = 7
-        self.crit_er = FocalLoss(gamma=2, alpha=class_weights, reduction='mean', num_classes=num_cls)
+        self.crit_er = FocalLoss(alpha=class_weights, reduction='mean', num_classes=num_cls)
         self.align_crit = CosineAlignLoss()
 
         # optimizer
