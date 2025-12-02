@@ -13,7 +13,7 @@ from utils.tools import *
 from model import *
 import logging
 # import wandb
-from modules.loss import CosineAlignLoss
+from modules.loss import CosineAlignLoss, FocalLoss
 from tqdm import tqdm
 from dataset import class_weights
 
@@ -41,7 +41,13 @@ class Solver(object):
         # self.criterion = nn.L1Loss(reduction="mean")  
         # self.criterion = nn.HuberLoss(reduction='mean')
         self.crit_sa = nn.L1Loss(reduction="mean")  
-        self.crit_er = nn.CrossEntropyLoss(weight=class_weights)
+        # self.crit_er = nn.CrossEntropyLoss(weight=class_weights)
+        num_cls = None
+        if hp.use_cross_iemocap_labels or hp.dataset == 'iemocap':
+            num_cls = 6
+        elif hp.use_cross_meld_labels or hp.dataset == 'meld':
+            num_cls = 7
+        self.crit_er = FocalLoss(gamma=2, alpha=class_weights, reduction='mean', num_classes=num_cls)
         self.align_crit = CosineAlignLoss()
 
         # optimizer
