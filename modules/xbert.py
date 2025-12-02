@@ -421,6 +421,11 @@ class XBertLayer(nn.Module):
                 [Adapter_Layer(bottleneck=self.rank, d_model=768) for _ in range(self.n_shared)])
             self.ts_sa = Adapter_Layer(bottleneck=self.rank, d_model=768)
             self.ts_er = Adapter_Layer(bottleneck=self.rank, d_model=768)
+
+            self.shared_experts2 = nn.ModuleList(
+                [Adapter_Layer(bottleneck=self.rank, d_model=768) for _ in range(self.n_shared)])
+            self.ts_sa2 = Adapter_Layer(bottleneck=self.rank, d_model=768)
+            self.ts_er2 = Adapter_Layer(bottleneck=self.rank, d_model=768)
         
             # self.adapter_atten_gate = RouterPFSelfAttention()
             self.router_sa = nn.Linear(768, self.n_shared)
@@ -486,10 +491,15 @@ class XBertLayer(nn.Module):
             total_lb = torch.tensor(0.0, device=attention_output.device, dtype=attention_output.dtype)
             h_sa = h
             h_er = h
-            for _ in range(2):
-                shared_outs = [e(h) for e in self.shared_experts]
-                ts_sa_out = self.ts_sa(h_sa)
-                ts_er_out = self.ts_er(h_er)
+            for zzzzzz in range(2):
+                if zzzzzz == 0:
+                    shared_outs = [e(h) for e in self.shared_experts]
+                    ts_sa_out = self.ts_sa(h_sa)
+                    ts_er_out = self.ts_er(h_er)
+                else:
+                    shared_outs = [e(h) for e in self.shared_experts2]
+                    ts_sa_out = self.ts_sa2(h_sa)
+                    ts_er_out = self.ts_er2(h_er)
 
                 logits_shared_sa = self.router_sa(h)
                 logits_shared_er = self.router_er(h)
@@ -512,10 +522,9 @@ class XBertLayer(nn.Module):
                 C_shared_sa = torch.einsum('bsdn,bsn->bsd', expert_stack_shared, weights_full_sa)
                 C_shared_er = torch.einsum('bsdn,bsn->bsd', expert_stack_shared, weights_full_er)
 
-                C_SA_total = C_shared_sa + ts_sa_out
-                C_ER_total = C_shared_er + ts_er_out
+                C_SA_total = (C_shared_sa + ts_sa_out) / self.rank
+                C_ER_total = (C_shared_er + ts_er_out) / self.rank
 
-                # h = 0.5*(C_SA_total + C_ER_total)
                 h = C_SA_total + C_ER_total
 
                 h_sa = C_SA_total
@@ -534,55 +543,17 @@ class XBertLayer(nn.Module):
                 lb_er = self.lb_loss_module(f_shared_er, P_shared_er)
                 total_lb += (lb_sa + lb_er)*self.n_shared
 
-            # gate_logits = self.adapter_atten_gate(torch.stack((attention_output, audio_t+attention_output, vision_t+attention_output), dim=1)).view(-1, N*3)
-            # gate_p = F.softmax(gate_logits, dim=1, dtype=torch.float).to(attention_output.dtype)
-            # weights, selected_experts = torch.topk(gate_logits, topK)  # T, K
-            # weights = F.softmax(weights, dim=1, dtype=torch.float).to(attention_output.dtype)
-            # results = torch.zeros_like(attention_output)
-
-            # experts = nn.ModuleList([
-            #                      self.adapter_1,self.adapter_2,
-            #                      self.adapter_audio_1,self.adapter_audio_2,
-            #                      self.adapter_vision_1,self.adapter_vision_2,
-            #                      ])
-            # f = torch.zeros(N*3)
-            # P = torch.zeros(N*3)
-            # for i, expert in enumerate(experts):
-                # f[i] = torch.sum(selected_experts == i).item() /T
-                # P[i] = torch.sum(gate_p[:,i]) /T
-                # batch_idx, nth_expert = torch.where(selected_experts == i)
-                # if i<N:
-                #     expert_output = expert(attention_output[batch_idx])
-                
-                # # print(expert_output.shape)
-                # elif i>(N-1) and i<2*N:
-                #     expert_output = expert(audio_t[batch_idx]+attention_output[batch_idx])
-                # else:
-                #     expert_output = expert(vision_t[batch_idx]+attention_output[batch_idx])
-                # results[batch_idx] += weights[batch_idx, nth_expert, None] * expert_output
-
             attention_output = attention_output.reshape(batch_size, sequence_length, hidden_dim)
-            # results = results.reshape(batch_size, sequence_length, hidden_dim)
             results = h
-            results = (32/self.rank) * results
+            results = 32 * results
             
-            # lbloss = Load_Balancing_loss()
-            # interval_1 = N
-            # interval_2 = N*2
-
-            # lb_loss = lbloss(f[0:interval_1], P[0:interval_1]) + \
-            # lbloss(f[interval_1:interval_2], P[interval_1:interval_2]) + \
-            # lbloss(f[interval_2:self.num_experts], P[interval_2:self.num_experts])
-            # lb_loss = lb_loss*N
-        #------------------------------adapter_change------------------------------#
-
-        outputs = self_attention_outputs[1:]  # add self attentions if we output attention weights
+        outputs = self_attention_outputs[1:]
         layer_output = apply_chunking_to_forward(
             self.feed_forward_chunk, self.chunk_size_feed_forward, self.seq_len_dim, attention_output
         )
         if self.add_adapter == True:
-            h_sa = layer_output + h_sa
-            h_er = layer_output + h_er
+            h_sa = layer_output + 32*h_sa
+            h_er = layer_output + 32*h_er
             layer_output = layer_output + results
         else:
             total_lb = 0.
