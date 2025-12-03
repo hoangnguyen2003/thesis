@@ -139,9 +139,11 @@ class Solver(object):
 
                 lambda_align = self.hp.lambda_align
                 lambda_lb = self.hp.lambda_lb
+                lambda_sa = self.hp.lambda_sa
+                lambda_er = self.hp.lambda_er
 
-                loss = (loss_sa if isinstance(loss_sa, torch.Tensor) else torch.tensor(
-                    float(loss_sa)).to(self.device)) + (loss_er if isinstance(loss_er, torch.Tensor) else torch.tensor(
+                loss = lambda_sa*(loss_sa if isinstance(loss_sa, torch.Tensor) else torch.tensor(
+                    float(loss_sa)).to(self.device)) + lambda_er*(loss_er if isinstance(loss_er, torch.Tensor) else torch.tensor(
                         float(loss_er)).to(self.device)) + lambda_align*loss_align + lambda_lb*LBLoss
                 loss.backward()
                 
