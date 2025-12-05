@@ -49,7 +49,6 @@ class MMDataset(Dataset):
         self.audio = data[self.mode]['audio'].astype(np.float32)
 
         self.rawText = data[self.mode]['raw_text']
-        self.ids = data[self.mode]['id']
         self.labels = {}
         self.labels['M'] = data[self.mode]['regression_labels'].astype(np.float32)
         if self.args.use_cross_iemocap_labels or self.args.dataset == 'iemocap':
@@ -105,7 +104,6 @@ class MMDataset(Dataset):
             'text': torch.Tensor(self.text[index]), 
             'audio': torch.Tensor(self.audio[index]),
             'vision': torch.Tensor(self.vision[index]),
-            'id': self.ids[index],
             'labels': labels_dict
         } 
         return sample
