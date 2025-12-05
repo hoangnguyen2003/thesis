@@ -29,17 +29,21 @@ class MMDataset(Dataset):
 
     def __init_mosi(self):
         path = self.args.data_path
-        sys.modules['numpy._core'] = __import__('numpy.core')
-        sys.modules['numpy._core'] = np.core
-        sys.modules['numpy._core.multiarray'] = np.core.multiarray
-        sys.modules['numpy._core.numeric'] = np.core.numeric
-        sys.modules['numpy._core.numerictypes'] = np.core.numerictypes
-        sys.modules['numpy._core.overrides'] = np.core.overrides
+        if self.args.dataset == 'iemocap':
+            sys.modules['numpy._core'] = __import__('numpy.core')
+            sys.modules['numpy._core'] = np.core
+            sys.modules['numpy._core.multiarray'] = np.core.multiarray
+            sys.modules['numpy._core.numeric'] = np.core.numeric
+            sys.modules['numpy._core.numerictypes'] = np.core.numerictypes
+            sys.modules['numpy._core.overrides'] = np.core.overrides
 
         with open(path, 'rb') as f:
             data = pickle.load(f)
 
-        self.text = data[self.mode]['text_bert'].astype(np.float32)
+        if self.args.dataset == 'iemocap':
+            self.text = data[self.mode]['text_bert'].cpu().numpy().astype(np.float32)
+        else:
+            self.text = data[self.mode]['text_bert'].astype(np.float32)
      
         self.vision = data[self.mode]['vision'].astype(np.float32)
         self.audio = data[self.mode]['audio'].astype(np.float32)
