@@ -30,6 +30,12 @@ class MMDataset(Dataset):
     def __init_mosi(self):
         path = self.args.data_path
         sys.modules['numpy._core'] = __import__('numpy.core')
+        sys.modules['numpy._core'] = np.core
+        sys.modules['numpy._core.multiarray'] = np.core.multiarray
+        sys.modules['numpy._core.numeric'] = np.core.numeric
+        sys.modules['numpy._core.numerictypes'] = np.core.numerictypes
+        sys.modules['numpy._core.overrides'] = np.core.overrides
+
         with open(path, 'rb') as f:
             data = pickle.load(f)
 
