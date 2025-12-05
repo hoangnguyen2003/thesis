@@ -42,7 +42,7 @@ def get_args():
     parser = argparse.ArgumentParser(description='Multimodal Sentiment Analysis')
 
     # Dataset
-    parser.add_argument('--dataset', type=str, default='mosei', choices=['mosi','mosei'],
+    parser.add_argument('--dataset', type=str, default='mosei', choices=['mosi','mosei','iemocap'],
                         help='dataset to use (default: mosei)')
     parser.add_argument('--data_path', type=str, default='aligned_50.pkl', 
                         help='path for storing the dataset')

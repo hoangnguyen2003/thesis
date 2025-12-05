@@ -21,6 +21,7 @@ class MMDataset(Dataset):
         DATA_MAP = {
             'mosi': self.__init_mosi,
             'mosei': self.__init_mosei,
+            'iemocap': self.__init_iemocap,
             'sims': self.__init_sims
         }
         DATA_MAP[args.dataset]()
@@ -30,14 +31,7 @@ class MMDataset(Dataset):
         with open(path, 'rb') as f:
             data = pickle.load(f)
 
-        # self.args.use_bert = True
-        # self.args.need_truncated = True
-        # self.args.need_data_aligned = True
-
-        # if self.args.use_bert:
         self.text = data[self.mode]['text_bert'].astype(np.float32)
-        # else:
-            # self.text = data[self.mode]['text'].astype(np.float32)
      
         self.vision = data[self.mode]['vision'].astype(np.float32)
         self.audio = data[self.mode]['audio'].astype(np.float32)
@@ -46,7 +40,7 @@ class MMDataset(Dataset):
         self.ids = data[self.mode]['id']
         self.labels = {}
         self.labels['M'] = data[self.mode]['regression_labels'].astype(np.float32)
-        if self.args.use_cross_iemocap_labels:
+        if self.args.use_cross_iemocap_labels or self.args.dataset == 'iemocap':
             self.labels['ER'] = np.array(data[self.mode]['iemocap_id']).astype(np.int64)
         elif self.args.use_cross_meld_labels:
             self.labels['ER'] = np.array(data[self.mode]['meld_id']).astype(np.int64)
@@ -55,26 +49,21 @@ class MMDataset(Dataset):
             num_classes = 6
         elif self.args.use_cross_meld_labels:
             num_classes = 7
+        elif self.args.dataset == 'iemocap':
+            num_classes = 4
         labels = np.array(self.labels['ER'])
         classes = np.arange(num_classes)
         global class_weights
         class_weights = compute_class_weight("balanced", classes, labels)
-        
-        if self.args.dataset == 'sims':
-            for m in "TAV":
-                self.labels[m] = data[self.mode]['regression'+'_labels_'+m]
 
         logger.info(f"{self.mode} samples: {self.labels['M'].shape}")
 
-        # if not self.args.need_data_aligned:
-            # self.audio_lengths = data[self.mode]['audio_lengths']
-            # self.vision_lengths = data[self.mode]['vision_lengths']
         self.audio[self.audio == -np.inf] = 0
 
-        # if self.args.need_truncated:
-        #     self.__truncated()
-
     def __init_mosei(self):
+        return self.__init_mosi()
+
+    def __init_iemocap(self):
         return self.__init_mosi()
 
     def __init_sims(self):
