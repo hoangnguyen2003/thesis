@@ -267,11 +267,8 @@ class Solver(object):
         # print(f'Best epoch: {best_epoch}')
         logging.info(f'Best epoch: {best_epoch}')
 
-        if self.hp.dataset in ["mosei_senti", "mosei"]:
+        if self.hp.dataset in ["iemocap", "mosei", "mosi"]:
             best_dict = eval_mosei_senti(best_results, best_truths, True)
-            best_dict_er = eval_emotionlines(best_results_er, best_truths_er)
-        elif self.hp.dataset == 'mosi':
-            best_dict = eval_mosi(best_results, best_truths, True)
             best_dict_er = eval_emotionlines(best_results_er, best_truths_er)
         sys.stdout.flush() 
         return best_dict, best_dict_er
