@@ -47,6 +47,8 @@ class Solver(object):
             num_cls = 6
         elif hp.use_cross_meld_labels or hp.dataset == 'meld':
             num_cls = 7
+        elif hp.dataset == 'iemocap':
+            num_cls = 4
         self.crit_er = FocalLoss(gamma=self.hp.gamma_focal, alpha=class_weights, reduction='mean', num_classes=num_cls)
         self.align_crit = CosineAlignLoss()
 
