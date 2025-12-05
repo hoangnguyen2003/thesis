@@ -43,7 +43,7 @@ class Solver(object):
         self.crit_sa = nn.L1Loss(reduction="mean")  
         # self.crit_er = nn.CrossEntropyLoss(weight=class_weights)
         num_cls = None
-        if hp.use_cross_iemocap_labels or hp.dataset == 'iemocap':
+        if hp.use_cross_iemocap_labels:
             num_cls = 6
         elif hp.use_cross_meld_labels or hp.dataset == 'meld':
             num_cls = 7
