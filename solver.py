@@ -246,12 +246,8 @@ class Solver(object):
                 patience = self.hp.patience
                 best_valid = val_loss + loss_er
                 best_epoch = epoch
-                if self.hp.dataset in ["mosei_senti", "mosei"]:
+                if self.hp.dataset in ["mosi", "mosei", "iemocap"]:
                     eval_mosei_senti(results, truths, True)
-                    eval_emotionlines(test_results_er.argmax(dim=1).cpu().numpy() if torch.is_tensor(test_results_er) else test_results_er,
-                                      test_truths_er.cpu().numpy() if torch.is_tensor(test_truths_er) else test_truths_er)
-                elif self.hp.dataset == 'mosi':
-                    eval_mosi(results, truths, True)
                     eval_emotionlines(test_results_er.argmax(dim=1).cpu().numpy() if torch.is_tensor(test_results_er) else test_results_er,
                                       test_truths_er.cpu().numpy() if torch.is_tensor(test_truths_er) else test_truths_er)
                 best_results = results
