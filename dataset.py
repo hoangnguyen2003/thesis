@@ -2,6 +2,7 @@ import logging
 import pickle
 import numpy as np
 import torch
+import sys
 from torch.utils.data import Dataset, DataLoader, ConcatDataset
 import pandas as pd
 from torch.nn.utils.rnn import pad_sequence
@@ -28,6 +29,7 @@ class MMDataset(Dataset):
 
     def __init_mosi(self):
         path = self.args.data_path
+        sys.modules['numpy._core'] = __import__('numpy.core')
         with open(path, 'rb') as f:
             data = pickle.load(f)
 
