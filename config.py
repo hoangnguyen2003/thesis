@@ -132,14 +132,14 @@ def str2bool(v):
 class Config(object):
     def __init__(self, data, mode='train'):
         """Configuration Class: set kwargs as class attributes with setattr"""
-        self.dataset_dir = data_dict[data.lower()]
+        # self.dataset_dir = data_dict[data.lower()]
         self.sdk_dir = sdk_dir
         self.mode = mode
         # Glove path
         self.word_emb_path = word_emb_path
 
         # Data Split ex) 'train', 'valid', 'test'
-        self.data_dir = self.dataset_dir
+        # self.data_dir = self.dataset_dir
 
     def __str__(self):
         """Pretty-print configurations in alphabetical order"""
