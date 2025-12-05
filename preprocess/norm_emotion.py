@@ -18,10 +18,17 @@ meld_map = {
     'anger': 6
 }
 
-path = 'datasets/CMU-MOSEI/new_MOSEI-label-v3.csv'
-out_path = 'datasets/CMU-MOSEI/MOSEI-label.csv'
+# path = 'datasets/CMU-MOSEI/new_MOSEI-label-v3.csv'
+# out_path = 'datasets/CMU-MOSEI/MOSEI-label.csv'
+
+# df = pd.read_csv(path)
+# df['iemocap_id'] = df['iemocap_label'].map(iemocap_map)
+# df['meld_id'] = df['meld_label'].map(meld_map)
+# df.to_csv(out_path, index=False)
+
+path = 'datasets/IEMOCAP/new-iemocap-label-v3.csv'
+out_path = 'datasets/IEMOCAP/iemocap.csv'
 
 df = pd.read_csv(path)
-df['iemocap_id'] = df['iemocap_label'].map(iemocap_map)
-df['meld_id'] = df['meld_label'].map(meld_map)
+df['iemocap_id'] = df['label'].map(iemocap_map)
 df.to_csv(out_path, index=False)

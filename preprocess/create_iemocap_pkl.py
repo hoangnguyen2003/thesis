@@ -4,13 +4,13 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 
 pkl_path = "datasets/IEMOCAP/iemocap_multi_features.pkl"
-csv_path = "datasets/csv/iemocap-label.csv"
+csv_path = "datasets/IEMOCAP/new-iemocap-label-v3.csv"
 out_path = "datasets/final/iemocap.pkl"
 
 with open(pkl_path, "rb") as f:
     old_data = pickle.load(f)
 
-videoIDs, _, _, videoText, _, _, _, videoAudio, videoVisual, videoSentence, trainVid, testVid = old_data
+videoIDs, _, videoLabels, videoText, _, _, _, videoAudio, videoVisual, videoSentence, trainVid, testVid = old_data
 
 df = pd.read_csv(csv_path)
 
@@ -25,7 +25,6 @@ def build_split(vid_list):
             row = df[df['vid_cid'] == vid_cid].iloc[0]
             ids.append(vid_cid)
             sentences.append(videoSentence[key][i])
-            texts.append(videoText[key][i])
             audios.append(videoAudio[key][i])
             visuals.append(videoVisual[key][i])
             cls_labels.append(row['emotion_id'])
@@ -33,7 +32,6 @@ def build_split(vid_list):
     return {
         'id': ids,
         'videoSentence': sentences,
-        'videoText': texts,
         'videoAudio': audios,
         'videoVisual': visuals,
         'classification_labels': cls_labels,

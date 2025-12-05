@@ -539,9 +539,9 @@ class XBertLayer(nn.Module):
                     f_shared_er = dispatched_mask_er.sum(dim=(0, 1)) / (batch_size*sequence_length)
                     P_shared_er = F.softmax(logits_shared_er, dim=-1).mean(dim=(0, 1))
 
-                lb_sa = self.lb_loss_module(f_shared_sa, P_shared_sa)
-                lb_er = self.lb_loss_module(f_shared_er, P_shared_er)
-                total_lb += (lb_sa + lb_er)*self.n_shared
+                lb_sa = (self.lb_loss_module(f_shared_sa, P_shared_sa)) * self.n_shared
+                lb_er = (self.lb_loss_module(f_shared_er, P_shared_er)) * self.n_shared
+                total_lb += (lb_sa + lb_er)/2.0
 
             attention_output = attention_output.reshape(batch_size, sequence_length, hidden_dim)
             results = h
@@ -558,7 +558,7 @@ class XBertLayer(nn.Module):
         else:
             total_lb = 0.
         outputs = (layer_output,) + outputs
-
+        total_lb = total_lb/2.0
         return outputs, total_lb, h_sa, h_er
 
     def feed_forward_chunk(self, attention_output):
