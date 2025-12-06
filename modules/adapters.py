@@ -42,7 +42,6 @@ class Adapter_Layer(nn.Module):
             self.scale = float(adapter_scalar)
 
         self.down_proj = nn.Linear(self.n_embd, self.down_size)
-        print(self.down_size)
         self.non_linear_func = nn.ReLU()
         self.up_proj = nn.Linear(self.down_size, self.n_embd)
 
