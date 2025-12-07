@@ -80,3 +80,8 @@ def eval_emotionlines(results, truths):
     truths = list(chain(*truths))
     report = classification_report(truths, results)
     print(report)
+
+    acc = accuracy_score(truths, results)  # Accuracy
+    wf1 = f1_score(truths, results, average='weighted')  # Weighted F1
+    print("Accuracy:", acc)
+    print("Weighted F1:", wf1)
