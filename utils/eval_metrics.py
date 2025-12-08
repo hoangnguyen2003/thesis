@@ -91,12 +91,14 @@ def eval_emotionlines(results, truths):
 
 
     cm = confusion_matrix(truths, results)
-    labels = np.unique(truths) 
+    label_map = {0: 'neutral', 1: 'happy', 2: 'sad', 3: 'angry'}
+    labels = [label_map[i] for i in label_map.keys()]
 
     plt.figure(figsize=(8,6))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=labels, yticklabels=labels)
     plt.xlabel('Predicted')
     plt.ylabel('Actual')
+    plt.yticks(rotation=0)
     plt.savefig("confusion_matrix.png")
 
     plt.show()
