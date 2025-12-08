@@ -4,6 +4,8 @@ from sklearn.metrics import confusion_matrix
 from sklearn.metrics import accuracy_score, f1_score
 import logging
 from itertools import chain
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 def multiclass_acc(preds, truths):
     """
@@ -85,3 +87,16 @@ def eval_emotionlines(results, truths):
     wf1 = f1_score(truths, results, average='weighted')  # Weighted F1
     print("Accuracy:", acc)
     print("Weighted F1:", wf1)
+
+
+
+    cm = confusion_matrix(truths, results)
+    labels = np.unique(truths) 
+
+    plt.figure(figsize=(8,6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=labels, yticklabels=labels)
+    plt.xlabel('Predicted')
+    plt.ylabel('Actual')
+    plt.savefig("confusion_matrix.png")
+
+    plt.show()
