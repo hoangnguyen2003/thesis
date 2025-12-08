@@ -435,7 +435,7 @@ class XBertLayer(nn.Module):
 
             self.lb_loss_module = Load_Balancing_loss()
 
-            self.proj = nn.Linear(3*768, 768)
+            self.proj = nn.Linear(2*768, 768)
 
     def forward(
         self,
@@ -485,8 +485,8 @@ class XBertLayer(nn.Module):
             audio_t = audio_t.contiguous().view(-1,hidden_dim)
             vision_t = vision_t.contiguous().view(-1,hidden_dim)
             h = self.proj(self.modality_fusion(
-                torch.stack((attention_output, audio_t + attention_output, vision_t+attention_output), dim=1)).reshape(
-                    batch_size, sequence_length, 3*hidden_dim))
+                torch.stack((audio_t + attention_output, vision_t+attention_output), dim=1)).reshape(
+                    batch_size, sequence_length, 2*hidden_dim))
             
             total_lb = torch.tensor(0.0, device=attention_output.device, dtype=attention_output.dtype)
             h_sa = h
