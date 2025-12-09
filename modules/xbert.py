@@ -549,11 +549,11 @@ class XBertLayer(nn.Module):
                 with torch.no_grad():
                     dispatched_mask_sa = (weights_full_sa > 0.0).float()
                     f_shared_sa = dispatched_mask_sa.sum(dim=(0, 1)) / (batch_size*sequence_length)
-                    P_shared_sa = F.softmax(logits_shared_sa, dim=-1).mean(dim=(0, 1))
+                    P_shared_sa = torch.ones(self.n_shared, device=h.device) / self.n_shared
 
                     dispatched_mask_er = (weights_full_er > 0.0).float()
                     f_shared_er = dispatched_mask_er.sum(dim=(0, 1)) / (batch_size*sequence_length)
-                    P_shared_er = F.softmax(logits_shared_er, dim=-1).mean(dim=(0, 1))
+                    P_shared_er = torch.ones(self.n_shared, device=h.device) / self.n_shared
 
                 lb_sa = (self.lb_loss_module(f_shared_sa, P_shared_sa)) * self.n_shared
                 lb_er = (self.lb_loss_module(f_shared_er, P_shared_er)) * self.n_shared
