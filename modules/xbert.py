@@ -449,117 +449,228 @@ class XBertLayer(nn.Module):
         vision: Optional[bool] = None,
         audio: Optional[bool] = None,
         vision_length = None,
-        audio_length = None
+        audio_length = None,
+        last_layer=False
     ) -> Tuple[torch.Tensor]:
-        # decoder uni-directional self-attention cached key/values tuple is at positions 1,2
-        self_attn_past_key_value = past_key_value[:2] if past_key_value is not None else None
-        self_attention_outputs = self.attention(
-            hidden_states,
-            attention_mask,
-            head_mask,
-            output_attentions=output_attentions,
-            past_key_value=self_attn_past_key_value,
-        )
-        attention_output = self_attention_outputs[0]
-        #-----------------------------adapter_change----------token fusion--------------------#
-        # N = self.num_experts / 3
-        if self.add_adapter == True:
-            # print(attention_mask.shape)  # bs, 1, 1, len
-            key_padding_mask = attention_mask.squeeze()
-            key_padding_mask = torch.where(key_padding_mask == 0, torch.tensor(1), key_padding_mask)
-            key_padding_mask = torch.where(key_padding_mask != 1, torch.tensor(0), key_padding_mask)
-            audio_hat = self.adapter_conv_audio(audio.permute(0,2,1)).permute(0,2,1)
-            vision_hat = self.adapter_conv_vision(vision.permute(0,2,1)).permute(0,2,1)
+        if last_layer:
+            # decoder uni-directional self-attention cached key/values tuple is at positions 1,2
+            self_attn_past_key_value = past_key_value[:2] if past_key_value is not None else None
+            self_attention_outputs = self.attention(
+                hidden_states,
+                attention_mask,
+                head_mask,
+                output_attentions=output_attentions,
+                past_key_value=self_attn_past_key_value,
+            )
+            attention_output = self_attention_outputs[0]
+            #-----------------------------adapter_change----------token fusion--------------------#
+            # N = self.num_experts / 3
+            if self.add_adapter == True:
+                # print(attention_mask.shape)  # bs, 1, 1, len
+                key_padding_mask = attention_mask.squeeze()
+                key_padding_mask = torch.where(key_padding_mask == 0, torch.tensor(1), key_padding_mask)
+                key_padding_mask = torch.where(key_padding_mask != 1, torch.tensor(0), key_padding_mask)
+                audio_hat = self.adapter_conv_audio(audio.permute(0,2,1)).permute(0,2,1)
+                vision_hat = self.adapter_conv_vision(vision.permute(0,2,1)).permute(0,2,1)
+                
+                audio_t = self.text_audio_atten(queries=attention_output,keys=audio_hat,values=audio_hat,mask=key_padding_mask[:,:audio_hat.shape[1]])
+                vision_t = self.text_vision_atten(queries=attention_output,keys=vision_hat,values=vision_hat,mask=key_padding_mask[:,:vision_hat.shape[1]])
+                
+
+                #-----------------------------adapter_change------------channel fusion------------------#
+                topK=self.TopK
+                # N = self.num_experts // 3
             
-            audio_t = self.text_audio_atten(queries=attention_output,keys=audio_hat,values=audio_hat,mask=key_padding_mask[:,:audio_hat.shape[1]])
-            vision_t = self.text_vision_atten(queries=attention_output,keys=vision_hat,values=vision_hat,mask=key_padding_mask[:,:vision_hat.shape[1]])
-            
+                batch_size, sequence_length, hidden_dim = attention_output.shape
+                T = batch_size*sequence_length
+                attention_output = attention_output.view(-1,hidden_dim)
+                audio_t = audio_t.contiguous().view(-1,hidden_dim)
+                vision_t = vision_t.contiguous().view(-1,hidden_dim)
+                h = self.proj(self.modality_fusion(
+                    torch.stack((attention_output, audio_t + attention_output, vision_t+attention_output), dim=1)).reshape(
+                        batch_size, sequence_length, 3*hidden_dim))
+                
+                total_lb = torch.tensor(0.0, device=attention_output.device, dtype=attention_output.dtype)
+                h_sa = h
+                h_er = h
+                for zzzzzz in range(2):
+                    if zzzzzz == 0:
+                        shared_outs = [e(h) for e in self.shared_experts]
+                        ts_sa_out = self.ts_sa(h_sa)
+                        ts_er_out = self.ts_er(h_er)
+                    else:
+                        shared_outs = [e(h) for e in self.shared_experts2]
+                        ts_sa_out = self.ts_sa2(h_sa)
+                        ts_er_out = self.ts_er2(h_er)
 
-             #-----------------------------adapter_change------------channel fusion------------------#
-            topK=self.TopK
-            # N = self.num_experts // 3
-        
-            batch_size, sequence_length, hidden_dim = attention_output.shape
-            T = batch_size*sequence_length
-            attention_output = attention_output.view(-1,hidden_dim)
-            audio_t = audio_t.contiguous().view(-1,hidden_dim)
-            vision_t = vision_t.contiguous().view(-1,hidden_dim)
-            h = self.proj(self.modality_fusion(
-                torch.stack((attention_output, audio_t + attention_output, vision_t+attention_output), dim=1)).reshape(
-                    batch_size, sequence_length, 3*hidden_dim))
-            
-            total_lb = torch.tensor(0.0, device=attention_output.device, dtype=attention_output.dtype)
-            h_sa = h
-            h_er = h
-            for zzzzzz in range(2):
-                if zzzzzz == 0:
-                    shared_outs = [e(h) for e in self.shared_experts]
-                    ts_sa_out = self.ts_sa(h_sa)
-                    ts_er_out = self.ts_er(h_er)
-                else:
-                    shared_outs = [e(h) for e in self.shared_experts2]
-                    ts_sa_out = self.ts_sa2(h_sa)
-                    ts_er_out = self.ts_er2(h_er)
+                    logits_shared_sa = self.router_sa(h)
+                    logits_shared_er = self.router_er(h)
 
-                logits_shared_sa = self.router_sa(h)
-                logits_shared_er = self.router_er(h)
+                    vals_sa, idx_sa = torch.topk(logits_shared_sa, topK, dim=-1)
+                    vals_er, idx_er = torch.topk(logits_shared_er, topK, dim=-1)
 
-                vals_sa, idx_sa = torch.topk(logits_shared_sa, topK, dim=-1)
-                vals_er, idx_er = torch.topk(logits_shared_er, topK, dim=-1)
+                    weights_sa_k = F.softmax(vals_sa, dim=-1, dtype=torch.float).to(attention_output.dtype)
+                    weights_er_k = F.softmax(vals_er, dim=-1, dtype=torch.float).to(attention_output.dtype)
 
-                weights_sa_k = F.softmax(vals_sa, dim=-1, dtype=torch.float).to(attention_output.dtype)
-                weights_er_k = F.softmax(vals_er, dim=-1, dtype=torch.float).to(attention_output.dtype)
+                    expert_stack_shared = torch.stack(shared_outs, dim=-1)
 
-                expert_stack_shared = torch.stack(shared_outs, dim=-1)
+                    weights_full_sa = torch.zeros(batch_size, sequence_length, self.n_shared,
+                                                device=attention_output.device, dtype=attention_output.dtype)
+                    weights_full_er = torch.zeros(batch_size, sequence_length, self.n_shared,
+                                                device=attention_output.device, dtype=attention_output.dtype)
+                    weights_full_sa.scatter_(-1, idx_sa, weights_sa_k)
+                    weights_full_er.scatter_(-1, idx_er, weights_er_k)
 
-                weights_full_sa = torch.zeros(batch_size, sequence_length, self.n_shared,
-                                              device=attention_output.device, dtype=attention_output.dtype)
-                weights_full_er = torch.zeros(batch_size, sequence_length, self.n_shared,
-                                              device=attention_output.device, dtype=attention_output.dtype)
-                weights_full_sa.scatter_(-1, idx_sa, weights_sa_k)
-                weights_full_er.scatter_(-1, idx_er, weights_er_k)
+                    C_shared_sa = torch.einsum('bsdn,bsn->bsd', expert_stack_shared, weights_full_sa)
+                    C_shared_er = torch.einsum('bsdn,bsn->bsd', expert_stack_shared, weights_full_er)
 
-                C_shared_sa = torch.einsum('bsdn,bsn->bsd', expert_stack_shared, weights_full_sa)
-                C_shared_er = torch.einsum('bsdn,bsn->bsd', expert_stack_shared, weights_full_er)
+                    C_SA_total = (C_shared_sa + ts_sa_out) / self.rank
+                    C_ER_total = (C_shared_er + ts_er_out) / self.rank
 
-                C_SA_total = (C_shared_sa + ts_sa_out) / self.rank
-                C_ER_total = (C_shared_er + ts_er_out) / self.rank
+                    h = C_SA_total + C_ER_total
 
-                h = C_SA_total + C_ER_total
+                    h_sa = C_SA_total
+                    h_er = C_ER_total
 
-                h_sa = C_SA_total
-                h_er = C_ER_total
+                    with torch.no_grad():
+                        dispatched_mask_sa = (weights_full_sa > 0.0).float()
+                        f_shared_sa = dispatched_mask_sa.sum(dim=(0, 1)) / (batch_size*sequence_length)
+                        P_shared_sa = F.softmax(logits_shared_sa, dim=-1).mean(dim=(0, 1))
 
-                with torch.no_grad():
-                    dispatched_mask_sa = (weights_full_sa > 0.0).float()
-                    f_shared_sa = dispatched_mask_sa.sum(dim=(0, 1)) / (batch_size*sequence_length)
-                    P_shared_sa = F.softmax(logits_shared_sa, dim=-1).mean(dim=(0, 1))
+                        dispatched_mask_er = (weights_full_er > 0.0).float()
+                        f_shared_er = dispatched_mask_er.sum(dim=(0, 1)) / (batch_size*sequence_length)
+                        P_shared_er = F.softmax(logits_shared_er, dim=-1).mean(dim=(0, 1))
 
-                    dispatched_mask_er = (weights_full_er > 0.0).float()
-                    f_shared_er = dispatched_mask_er.sum(dim=(0, 1)) / (batch_size*sequence_length)
-                    P_shared_er = F.softmax(logits_shared_er, dim=-1).mean(dim=(0, 1))
+                    lb_sa = (self.lb_loss_module(f_shared_sa, P_shared_sa)) * self.n_shared
+                    lb_er = (self.lb_loss_module(f_shared_er, P_shared_er)) * self.n_shared
+                    total_lb += (lb_sa + lb_er)/2.0
 
-                lb_sa = (self.lb_loss_module(f_shared_sa, P_shared_sa)) * self.n_shared
-                lb_er = (self.lb_loss_module(f_shared_er, P_shared_er)) * self.n_shared
-                total_lb += (lb_sa + lb_er)/2.0
-
-            attention_output = attention_output.reshape(batch_size, sequence_length, hidden_dim)
-            results = h
-            results = 32 * results
-            
-        outputs = self_attention_outputs[1:]
-        layer_output = apply_chunking_to_forward(
-            self.feed_forward_chunk, self.chunk_size_feed_forward, self.seq_len_dim, attention_output
-        )
-        if self.add_adapter == True:
-            h_sa = layer_output + 32*h_sa
-            h_er = layer_output + 32*h_er
-            layer_output = layer_output + results
+                attention_output = attention_output.reshape(batch_size, sequence_length, hidden_dim)
+                results = h
+                results = 32 * results
+                
+            outputs = self_attention_outputs[1:]
+            layer_output = apply_chunking_to_forward(
+                self.feed_forward_chunk, self.chunk_size_feed_forward, self.seq_len_dim, attention_output
+            )
+            if self.add_adapter == True:
+                h_sa = layer_output + 32*h_sa
+                h_er = layer_output + 32*h_er
+                layer_output = layer_output + results
+            else:
+                total_lb = 0.
+            outputs = (layer_output,) + outputs
+            total_lb = total_lb/2.0
+            return outputs, total_lb, h_sa, h_er
         else:
-            total_lb = 0.
-        outputs = (layer_output,) + outputs
-        total_lb = total_lb/2.0
-        return outputs, total_lb, h_sa, h_er
+            # decoder uni-directional self-attention cached key/values tuple is at positions 1,2
+            self_attn_past_key_value = past_key_value[:2] if past_key_value is not None else None
+            self_attention_outputs = self.attention(
+                hidden_states,
+                attention_mask,
+                head_mask,
+                output_attentions=output_attentions,
+                past_key_value=self_attn_past_key_value,
+            )
+            attention_output = self_attention_outputs[0]
+            #-----------------------------adapter_change----------token fusion--------------------#
+            # N = self.num_experts / 3
+            if self.add_adapter == True:
+                # print(attention_mask.shape)  # bs, 1, 1, len
+                key_padding_mask = attention_mask.squeeze()
+                key_padding_mask = torch.where(key_padding_mask == 0, torch.tensor(1), key_padding_mask)
+                key_padding_mask = torch.where(key_padding_mask != 1, torch.tensor(0), key_padding_mask)
+                audio_hat = self.adapter_conv_audio(audio.permute(0,2,1)).permute(0,2,1)
+                vision_hat = self.adapter_conv_vision(vision.permute(0,2,1)).permute(0,2,1)
+                
+                audio_t = self.text_audio_atten(queries=hidden_states,keys=audio_hat,values=audio_hat,mask=key_padding_mask[:,:audio_hat.shape[1]])
+                vision_t = self.text_vision_atten(queries=hidden_states,keys=vision_hat,values=vision_hat,mask=key_padding_mask[:,:vision_hat.shape[1]])
+                
+
+                #-----------------------------adapter_change------------channel fusion------------------#
+                topK=self.TopK
+                # N = self.num_experts // 3
+            
+                batch_size, sequence_length, hidden_dim = hidden_states.shape
+                T = batch_size*sequence_length
+                hidden_states = hidden_states.view(-1,hidden_dim)
+                audio_t = audio_t.contiguous().view(-1,hidden_dim)
+                vision_t = vision_t.contiguous().view(-1,hidden_dim)
+                h = self.proj(self.modality_fusion(
+                    torch.stack((hidden_states, audio_t + hidden_states, vision_t+hidden_states), dim=1)).reshape(
+                        batch_size, sequence_length, 3*hidden_dim))
+                
+                total_lb = torch.tensor(0.0, device=hidden_states.device, dtype=hidden_states.dtype)
+                h_sa = h
+                h_er = h
+                for zzzzzz in range(2):
+                    if zzzzzz == 0:
+                        shared_outs = [e(h) for e in self.shared_experts]
+                        ts_sa_out = self.ts_sa(h_sa)
+                        ts_er_out = self.ts_er(h_er)
+                    else:
+                        shared_outs = [e(h) for e in self.shared_experts2]
+                        ts_sa_out = self.ts_sa2(h_sa)
+                        ts_er_out = self.ts_er2(h_er)
+
+                    logits_shared_sa = self.router_sa(h)
+                    logits_shared_er = self.router_er(h)
+
+                    vals_sa, idx_sa = torch.topk(logits_shared_sa, topK, dim=-1)
+                    vals_er, idx_er = torch.topk(logits_shared_er, topK, dim=-1)
+
+                    weights_sa_k = F.softmax(vals_sa, dim=-1, dtype=torch.float).to(hidden_states.dtype)
+                    weights_er_k = F.softmax(vals_er, dim=-1, dtype=torch.float).to(hidden_states.dtype)
+
+                    expert_stack_shared = torch.stack(shared_outs, dim=-1)
+
+                    weights_full_sa = torch.zeros(batch_size, sequence_length, self.n_shared,
+                                                device=hidden_states.device, dtype=hidden_states.dtype)
+                    weights_full_er = torch.zeros(batch_size, sequence_length, self.n_shared,
+                                                device=hidden_states.device, dtype=hidden_states.dtype)
+                    weights_full_sa.scatter_(-1, idx_sa, weights_sa_k)
+                    weights_full_er.scatter_(-1, idx_er, weights_er_k)
+
+                    C_shared_sa = torch.einsum('bsdn,bsn->bsd', expert_stack_shared, weights_full_sa)
+                    C_shared_er = torch.einsum('bsdn,bsn->bsd', expert_stack_shared, weights_full_er)
+
+                    C_SA_total = (C_shared_sa + ts_sa_out) / self.rank
+                    C_ER_total = (C_shared_er + ts_er_out) / self.rank
+
+                    h = C_SA_total + C_ER_total
+
+                    h_sa = C_SA_total
+                    h_er = C_ER_total
+
+                    with torch.no_grad():
+                        dispatched_mask_sa = (weights_full_sa > 0.0).float()
+                        f_shared_sa = dispatched_mask_sa.sum(dim=(0, 1)) / (batch_size*sequence_length)
+                        P_shared_sa = F.softmax(logits_shared_sa, dim=-1).mean(dim=(0, 1))
+
+                        dispatched_mask_er = (weights_full_er > 0.0).float()
+                        f_shared_er = dispatched_mask_er.sum(dim=(0, 1)) / (batch_size*sequence_length)
+                        P_shared_er = F.softmax(logits_shared_er, dim=-1).mean(dim=(0, 1))
+
+                    lb_sa = (self.lb_loss_module(f_shared_sa, P_shared_sa)) * self.n_shared
+                    lb_er = (self.lb_loss_module(f_shared_er, P_shared_er)) * self.n_shared
+                    total_lb += (lb_sa + lb_er)/2.0
+
+                hidden_states = hidden_states.reshape(batch_size, sequence_length, hidden_dim)
+                results = h
+                results = 32 * results
+                
+            outputs = self_attention_outputs[1:]
+            layer_output = apply_chunking_to_forward(
+                self.feed_forward_chunk, self.chunk_size_feed_forward, self.seq_len_dim, attention_output + results
+            )
+            if self.add_adapter == True:
+                h_sa = layer_output + 32*h_sa
+                h_er = layer_output + 32*h_er
+            else:
+                total_lb = 0.
+            outputs = (layer_output,) + outputs
+            total_lb = total_lb/2.0
+            return outputs, total_lb, h_sa, h_er
 
     def feed_forward_chunk(self, attention_output):
         intermediate_output = self.intermediate(attention_output)
@@ -608,13 +719,15 @@ class BertEncoder(nn.Module):
         LBLoss = 0.0
         f = torch.zeros((12, 6))
         # layer_experts_outputs = torch.zeros((12, batch_size*3*50, 769))
+        last_layer = False
         for i, layer_module in enumerate(self.layer):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
             layer_head_mask = head_mask[i] if head_mask is not None else None
             past_key_value = past_key_values[i] if past_key_values is not None else None
-
+            if i == 11:
+                last_layer = True
             layer_outputs, LBLoss_layer, h_sa, h_er = layer_module(
                     hidden_states,
                     attention_mask,
@@ -626,7 +739,8 @@ class BertEncoder(nn.Module):
                     vision=vision,
                     audio=audio,
                     vision_length = vision_length,
-                    audio_length = audio_length
+                    audio_length = audio_length,
+                    last_layer=last_layer
                     # layer = i
                 )
             LBLoss = LBLoss + LBLoss_layer
