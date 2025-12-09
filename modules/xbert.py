@@ -478,17 +478,20 @@ class XBertLayer(nn.Module):
              #-----------------------------adapter_change------------channel fusion------------------#
             topK=self.TopK
             # N = self.num_experts // 3
-        
-            batch_size, sequence_length, hidden_dim = attention_output.shape
+
+            layer_output = apply_chunking_to_forward(
+                self.feed_forward_chunk, self.chunk_size_feed_forward, self.seq_len_dim, attention_output
+            )
+            batch_size, sequence_length, hidden_dim = layer_output.shape
             T = batch_size*sequence_length
-            attention_output = attention_output.view(-1,hidden_dim)
+            layer_output = layer_output.view(-1,hidden_dim)
             audio_t = audio_t.contiguous().view(-1,hidden_dim)
             vision_t = vision_t.contiguous().view(-1,hidden_dim)
             h = self.proj(self.modality_fusion(
-                torch.stack((attention_output, audio_t + attention_output, vision_t+attention_output), dim=1)).reshape(
+                torch.stack((layer_output, audio_t + layer_output, vision_t+layer_output), dim=1)).reshape(
                     batch_size, sequence_length, 3*hidden_dim))
             
-            total_lb = torch.tensor(0.0, device=attention_output.device, dtype=attention_output.dtype)
+            total_lb = torch.tensor(0.0, device=layer_output.device, dtype=layer_output.dtype)
             h_sa = h
             h_er = h
             for zzzzzz in range(2):
@@ -507,15 +510,15 @@ class XBertLayer(nn.Module):
                 vals_sa, idx_sa = torch.topk(logits_shared_sa, topK, dim=-1)
                 vals_er, idx_er = torch.topk(logits_shared_er, topK, dim=-1)
 
-                weights_sa_k = F.softmax(vals_sa, dim=-1, dtype=torch.float).to(attention_output.dtype)
-                weights_er_k = F.softmax(vals_er, dim=-1, dtype=torch.float).to(attention_output.dtype)
+                weights_sa_k = F.softmax(vals_sa, dim=-1, dtype=torch.float).to(layer_output.dtype)
+                weights_er_k = F.softmax(vals_er, dim=-1, dtype=torch.float).to(layer_output.dtype)
 
                 expert_stack_shared = torch.stack(shared_outs, dim=-1)
 
                 weights_full_sa = torch.zeros(batch_size, sequence_length, self.n_shared,
-                                              device=attention_output.device, dtype=attention_output.dtype)
+                                              device=layer_output.device, dtype=layer_output.dtype)
                 weights_full_er = torch.zeros(batch_size, sequence_length, self.n_shared,
-                                              device=attention_output.device, dtype=attention_output.dtype)
+                                              device=layer_output.device, dtype=layer_output.dtype)
                 weights_full_sa.scatter_(-1, idx_sa, weights_sa_k)
                 weights_full_er.scatter_(-1, idx_er, weights_er_k)
 
@@ -543,14 +546,12 @@ class XBertLayer(nn.Module):
                 lb_er = (self.lb_loss_module(f_shared_er, P_shared_er)) * self.n_shared
                 total_lb += (lb_sa + lb_er)/2.0
 
-            attention_output = attention_output.reshape(batch_size, sequence_length, hidden_dim)
+            layer_output = layer_output.reshape(batch_size, sequence_length, hidden_dim)
             results = h
             results = 32 * results
             
         outputs = self_attention_outputs[1:]
-        layer_output = apply_chunking_to_forward(
-            self.feed_forward_chunk, self.chunk_size_feed_forward, self.seq_len_dim, attention_output
-        )
+        
         if self.add_adapter == True:
             h_sa = layer_output + 32*h_sa
             h_er = layer_output + 32*h_er
