@@ -501,14 +501,30 @@ class XBertLayer(nn.Module):
                     ts_sa_out = self.ts_sa2(h_sa)
                     ts_er_out = self.ts_er2(h_er)
 
-                logits_shared_sa = self.router_sa(h)
-                logits_shared_er = self.router_er(h)
+                # logits_shared_sa = self.router_sa(h)
+                # logits_shared_er = self.router_er(h)
 
-                vals_sa, idx_sa = torch.topk(logits_shared_sa, topK, dim=-1)
-                vals_er, idx_er = torch.topk(logits_shared_er, topK, dim=-1)
+                # vals_sa, idx_sa = torch.topk(logits_shared_sa, topK, dim=-1)
+                # vals_er, idx_er = torch.topk(logits_shared_er, topK, dim=-1)
 
-                weights_sa_k = F.softmax(vals_sa, dim=-1, dtype=torch.float).to(attention_output.dtype)
-                weights_er_k = F.softmax(vals_er, dim=-1, dtype=torch.float).to(attention_output.dtype)
+                idx_sa = torch.randint(
+                    low=0, high=self.n_shared, 
+                    size=(batch_size, sequence_length, topK), 
+                    device=h.device
+                )
+                idx_er = torch.randint(
+                    low=0, high=self.n_shared, 
+                    size=(batch_size, sequence_length, topK), 
+                    device=h.device
+                )
+
+                weights_sa_k = torch.ones(batch_size, sequence_length, topK, 
+                                          device=h.device, dtype=attention_output.dtype) / topK
+                weights_er_k = torch.ones(batch_size, sequence_length, topK, 
+                                          device=h.device, dtype=attention_output.dtype) / topK
+
+                # weights_sa_k = F.softmax(vals_sa, dim=-1, dtype=torch.float).to(attention_output.dtype)
+                # weights_er_k = F.softmax(vals_er, dim=-1, dtype=torch.float).to(attention_output.dtype)
 
                 expert_stack_shared = torch.stack(shared_outs, dim=-1)
 
